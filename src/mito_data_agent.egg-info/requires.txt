@@ -1,0 +1,12 @@
+langgraph
+pydantic
+python-dotenv
+numpy
+tifffile
+pandas
+openai
+fastapi
+uvicorn[standard]
+
+[dev]
+pytest

@@ -1,3 +1,21 @@
+Metadata-Version: 2.4
+Name: mito-data-agent
+Version: 0.1.0
+Summary: LangGraph MVP for MitoVerse upload preparation
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: langgraph
+Requires-Dist: pydantic
+Requires-Dist: python-dotenv
+Requires-Dist: numpy
+Requires-Dist: tifffile
+Requires-Dist: pandas
+Requires-Dist: openai
+Requires-Dist: fastapi
+Requires-Dist: uvicorn[standard]
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+
 # Mito Data Agent
 
 A **LLM-powered** LangGraph agent for prompt-driven annotated mitochondria volume upload preparation.
@@ -110,7 +128,7 @@ File-derived values override prompt values during merge.
 
 ## Data directory
 
-Annotated volumes live in **`../mito_data_agent_data`** (sibling to this repo; override with `MITO_AGENT_DATA_DIR` or see `DEFAULT_DATA_DIR` in `config.py`):
+Annotated volumes live in **`../mito_data_agent_data`** (sibling to this repo; see `DEFAULT_DATA_DIR` in `config.py`):
 
 - Raw: `vol1_0000.tiff`
 - Label: `vol1.tiff`
@@ -180,6 +198,6 @@ After a successful upload run:
 - `outputs/mitoverse_updates/<volume>_site_update_patch.md`
 - `outputs/execution_reports/<run_id>.json`
 
-## External writes (stub tools)
+## Dry-run safety guarantee
 
-Upload/push tools (`pseudo_upload_hf`, `pseudo_push_github`) are **stub implementations**: they validate inputs and return a plan with `real_write_performed=false`. They do not call Hugging Face or GitHub APIs. When the agent is stable, swap these modules for real implementations (see `ALLOW_REAL_*` flags in `config.py`).
+All pseudo tools return `real_write_performed=false`. The MVP refuses `dry_run=False` and will raise a `RuntimeError` if real upload or push is attempted. Configuration flags in `config.py` (`ALLOW_REAL_HF_UPLOAD`, etc.) are all `False`.

@@ -1,0 +1,26 @@
+# Runtime agent outputs (hf_staging, reports, logs, cache, …)
+outputs/**
+!outputs/**/
+!outputs/**/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Environment / secrets
+.env
+.env.*
+*.pem
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*~

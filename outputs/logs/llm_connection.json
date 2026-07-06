@@ -1,9 +1,0 @@
-{
-  "llm_backend": "codex_cli",
-  "llm_model": "gpt-4.1",
-  "openai_api_key": null,
-  "codex_path": "/home/shenb/.local/bin/codex",
-  "allow_rule_based_fallback": false,
-  "last_test_success": true,
-  "last_test_message": "Connected to Codex CLI successfully."
-}

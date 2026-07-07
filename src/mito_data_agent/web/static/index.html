@@ -1,0 +1,553 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mito Data Agent</title>
+  <style>
+    :root {
+      --bg: #f6f7fb;
+      --surface: #ffffff;
+      --surface-2: #f0f2f8;
+      --border: #e2e5ee;
+      --text: #1c2333;
+      --muted: #6b7280;
+      --accent: #5b6cff;
+      --accent-weak: #eaecff;
+      --ok: #16a34a;
+      --ok-weak: #e7f6ec;
+      --warn: #b45309;
+      --warn-weak: #fdf0dc;
+      --err: #dc2626;
+      --err-weak: #fdeaea;
+      --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --radius: 12px;
+      --shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.08);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f1117; --surface: #171a22; --surface-2: #1e222c; --border: #2a2f3b;
+        --text: #e7e9ef; --muted: #98a0b3; --accent: #7c8cff; --accent-weak: #23273a;
+        --ok: #4ade80; --ok-weak: #16281c; --warn: #fbbf24; --warn-weak: #2a2113;
+        --err: #f87171; --err-weak: #2a1717; --shadow: 0 1px 3px rgba(0,0,0,.4);
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: var(--sans); color: var(--text); background: var(--bg);
+      font-size: 14px; line-height: 1.5;
+    }
+    button { font-family: inherit; cursor: pointer; }
+    a { color: var(--accent); }
+    code, pre { font-family: var(--mono); }
+
+    /* ---- Layout ---- */
+    header {
+      display: flex; align-items: center; gap: 16px; padding: 14px 22px;
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; z-index: 20;
+    }
+    .brand { display: flex; align-items: center; gap: 11px; }
+    .brand .logo {
+      width: 32px; height: 32px; border-radius: 9px; flex: none;
+      background: linear-gradient(135deg, var(--accent), #9b6bff);
+      display: grid; place-items: center; color: #fff; font-size: 18px;
+    }
+    .brand h1 { font-size: 15px; margin: 0; font-weight: 650; }
+    .brand p { margin: 0; font-size: 12px; color: var(--muted); }
+    .spacer { flex: 1; }
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;
+      border-radius: 999px; font-size: 12px; font-weight: 550; background: var(--surface-2);
+      border: 1px solid var(--border); color: var(--muted);
+    }
+    .badge .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+    .icon-btn {
+      width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--border);
+      background: var(--surface); color: var(--text); font-size: 16px; display: grid;
+      place-items: center; transition: background .12s;
+    }
+    .icon-btn:hover { background: var(--surface-2); }
+
+    .tabs { display: flex; gap: 4px; padding: 10px 22px 0; background: var(--surface);
+      border-bottom: 1px solid var(--border); position: sticky; top: 61px; z-index: 15; }
+    .tab {
+      border: none; background: none; padding: 9px 14px; font-size: 13.5px; font-weight: 550;
+      color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px;
+    }
+    .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+    main { max-width: 1200px; margin: 0 auto; padding: 22px; }
+
+    /* ---- Run view: two columns ---- */
+    .run-grid { display: grid; grid-template-columns: minmax(320px, 420px) 1fr; gap: 22px; align-items: start; }
+    @media (max-width: 860px) { .run-grid { grid-template-columns: 1fr; } }
+
+    .card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      box-shadow: var(--shadow); padding: 18px;
+    }
+    .card + .card { margin-top: 16px; }
+    .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em;
+      color: var(--muted); margin: 0 0 12px; font-weight: 650; }
+
+    label.field { display: block; font-size: 12.5px; font-weight: 600; color: var(--muted); margin: 12px 0 5px; }
+    textarea, input, select {
+      width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 9px;
+      background: var(--surface-2); color: var(--text); font-size: 13.5px; font-family: inherit;
+    }
+    textarea { min-height: 200px; resize: vertical; line-height: 1.55; }
+    textarea:focus, input:focus, select:focus { outline: 2px solid var(--accent-weak); border-color: var(--accent); }
+
+    .chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 4px; }
+    .chip {
+      border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+      border-radius: 999px; padding: 5px 11px; font-size: 12px; font-weight: 500;
+    }
+    .chip:hover { border-color: var(--accent); color: var(--accent); }
+
+    .btn-primary {
+      margin-top: 14px; width: 100%; padding: 11px; border: none; border-radius: 9px;
+      background: var(--accent); color: #fff; font-size: 14px; font-weight: 600;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .btn-primary:disabled { opacity: .6; cursor: default; }
+    .btn-ghost { background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
+      border-radius: 8px; padding: 7px 12px; font-size: 12.5px; font-weight: 550; }
+
+    .spinner { width: 15px; height: 15px; border: 2px solid rgba(255,255,255,.4);
+      border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .hint { font-size: 12px; color: var(--muted); margin-top: 8px; }
+
+    /* ---- Results ---- */
+    .empty { text-align: center; color: var(--muted); padding: 60px 20px; }
+    .empty .big { font-size: 40px; margin-bottom: 10px; }
+
+    .pills { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
+    .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 999px;
+      font-size: 12px; font-weight: 600; background: var(--surface-2); border: 1px solid var(--border); }
+    .pill.ok { background: var(--ok-weak); color: var(--ok); border-color: transparent; }
+    .pill.warn { background: var(--warn-weak); color: var(--warn); border-color: transparent; }
+    .pill.err { background: var(--err-weak); color: var(--err); border-color: transparent; }
+    .pill.mono { font-family: var(--mono); font-weight: 500; }
+
+    .ds { border: 1px solid var(--border); border-radius: 10px; padding: 13px 15px; background: var(--surface-2); }
+    .ds + .ds { margin-top: 10px; }
+    .ds-head { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; }
+    .ds-head .name { font-weight: 650; font-size: 14px; }
+    .kv { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px 18px; }
+    .kv div { font-size: 12.5px; }
+    .kv .k { color: var(--muted); }
+    .kv .src { color: var(--accent); font-size: 10.5px; text-transform: uppercase; margin-left: 4px; }
+    .sidecar { margin-top: 9px; font-family: var(--mono); font-size: 11.5px; color: var(--muted);
+      word-break: break-all; }
+
+    ul.plain { list-style: none; padding: 0; margin: 0; }
+    ul.plain li { font-size: 12.5px; padding: 3px 0; }
+    .art-row { display: flex; gap: 8px; font-size: 12.5px; padding: 3px 0; }
+    .art-row .k { color: var(--muted); min-width: 130px; }
+    .art-row .v { font-family: var(--mono); word-break: break-all; }
+
+    .msg { font-size: 12.5px; padding: 7px 11px; border-radius: 8px; margin-top: 6px; }
+    .msg.warn { background: var(--warn-weak); color: var(--warn); }
+    .msg.err { background: var(--err-weak); color: var(--err); }
+
+    details { border: 1px solid var(--border); border-radius: 10px; margin-top: 16px; background: var(--surface); }
+    details summary { cursor: pointer; padding: 12px 16px; font-weight: 600; font-size: 13px;
+      list-style: none; display: flex; align-items: center; gap: 8px; }
+    details summary::-webkit-details-marker { display: none; }
+    details summary::before { content: "▸"; color: var(--muted); transition: transform .15s; }
+    details[open] summary::before { transform: rotate(90deg); }
+    details .body { padding: 0 16px 16px; }
+    pre.report { background: var(--surface-2); border-radius: 8px; padding: 14px; overflow-x: auto;
+      font-size: 12px; line-height: 1.55; white-space: pre; margin: 0; }
+
+    /* ---- Trace timeline ---- */
+    .timeline { position: relative; margin: 4px 0 0; padding-left: 6px; }
+    .tl { display: flex; gap: 11px; padding: 6px 0; }
+    .tl .marker { flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid;
+      place-items: center; font-size: 12px; }
+    .tl.sup .marker { background: var(--accent-weak); color: var(--accent); }
+    .tl.agent .marker { background: var(--ok-weak); color: var(--ok); }
+    .tl .content { font-size: 12.5px; }
+    .tl .who { font-weight: 600; }
+    .tl .detail { color: var(--muted); }
+
+    /* ---- Records table ---- */
+    .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; }
+    .toolbar input { max-width: 280px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); }
+    th { font-size: 11.5px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
+    tbody tr:hover { background: var(--surface-2); }
+    td.mono { font-family: var(--mono); font-size: 12px; }
+
+    /* ---- Modal ---- */
+    .overlay { position: fixed; inset: 0; background: rgba(10,14,25,.5); display: none;
+      align-items: center; justify-content: center; z-index: 50; padding: 20px; }
+    .overlay.open { display: flex; }
+    .modal { background: var(--surface); border-radius: 14px; width: 100%; max-width: 440px;
+      padding: 22px; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+    .modal h3 { margin: 0 0 4px; font-size: 16px; }
+    .modal .sub { color: var(--muted); font-size: 12.5px; margin-bottom: 8px; }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+
+    .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
+      background: var(--text); color: var(--bg); padding: 10px 18px; border-radius: 999px;
+      font-size: 13px; font-weight: 550; opacity: 0; transition: opacity .2s, transform .2s;
+      pointer-events: none; z-index: 60; }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(-4px); }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="logo">🧬</div>
+      <div>
+        <h1>Mito Data Agent</h1>
+        <p>Prompt-driven MitoVerse metadata &amp; upload prep</p>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <span class="badge" id="backendBadge" title="Active LLM backend"><span class="dot"></span> …</span>
+    <button class="icon-btn" id="settingsBtn" title="LLM settings">⚙️</button>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="run">Run</button>
+    <button class="tab" data-tab="records">Records</button>
+  </nav>
+
+  <main>
+    <!-- ============ RUN ============ -->
+    <section id="tab-run">
+      <div class="run-grid">
+        <!-- composer -->
+        <div>
+          <div class="card">
+            <h2>Your request</h2>
+            <textarea id="prompt" placeholder="Describe your annotated mitochondria volume(s)…
+
+e.g. Prepare vol1 for upload. Raw file is ../mito_data_agent_data/vol1_0000.tiff, label is ../mito_data_agent_data/vol1.tiff. Organism mouse, modality FIB-SEM, license CC-BY-4.0."></textarea>
+            <label class="field">Examples</label>
+            <div class="chips" id="exampleChips"></div>
+            <button class="btn-primary" id="runBtn"><span id="runLabel">Run workflow</span></button>
+            <p class="hint">All external writes are dry-run — nothing is uploaded or pushed.</p>
+          </div>
+        </div>
+        <!-- results -->
+        <div id="results">
+          <div class="card">
+            <div class="empty">
+              <div class="big">✨</div>
+              <div>Enter a prompt and run the workflow.<br>The report, recorded datasets, and agent trace will appear here.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ RECORDS ============ -->
+    <section id="tab-records" style="display:none">
+      <div class="card">
+        <h2>Recorded metadata ledger</h2>
+        <div class="toolbar">
+          <input id="recordSearch" placeholder="Filter by volume, organism, modality…" />
+          <button class="btn-ghost" id="refreshRecords">Refresh</button>
+          <div class="spacer"></div>
+          <span class="hint" id="recordMeta"></span>
+        </div>
+        <div id="recordsTable"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============ SETTINGS MODAL ============ -->
+  <div class="overlay" id="settingsOverlay">
+    <div class="modal">
+      <h3>LLM settings</h3>
+      <div class="sub">Used for prompt parsing and supervisor routing. Saved to <code>outputs/logs/</code>.</div>
+      <label class="field">Backend</label>
+      <select id="setBackend">
+        <option value="openai">OpenAI</option>
+        <option value="codex_cli">Codex CLI (local)</option>
+      </select>
+      <label class="field">Model</label>
+      <input id="setModel" placeholder="gpt-4.1" />
+      <div id="openaiRow">
+        <label class="field">OpenAI API key <span id="keyState" class="hint"></span></label>
+        <input id="setKey" type="password" placeholder="sk-… (leave blank to keep current)" />
+      </div>
+      <div id="codexRow" style="display:none">
+        <label class="field">Codex path</label>
+        <input id="setCodex" placeholder="/usr/local/bin/codex" />
+      </div>
+      <div class="modal-actions">
+        <button class="btn-ghost" id="settingsCancel">Cancel</button>
+        <button class="btn-primary" style="width:auto;margin:0;padding:9px 18px" id="settingsSave">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+  const $ = (s) => document.querySelector(s);
+  const el = (t, cls, html) => { const e = document.createElement(t); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
+  const esc = (s) => String(s == null ? "" : s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const fmt = (v) => Array.isArray(v) ? "[" + v.join(", ") + "]" : (v == null ? "—" : v);
+
+  function toast(msg) {
+    const t = $("#toast"); t.textContent = msg; t.classList.add("show");
+    clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove("show"), 2200);
+  }
+
+  async function api(path, opts) {
+    const r = await fetch(path, opts);
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.detail || r.statusText);
+    return data;
+  }
+
+  /* ---------- tabs ---------- */
+  document.querySelectorAll(".tab").forEach((btn) => {
+    btn.onclick = () => {
+      document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b === btn));
+      const tab = btn.dataset.tab;
+      $("#tab-run").style.display = tab === "run" ? "" : "none";
+      $("#tab-records").style.display = tab === "records" ? "" : "none";
+      if (tab === "records") loadRecords();
+    };
+  });
+
+  /* ---------- health / examples ---------- */
+  async function loadHealth() {
+    try {
+      const h = await api("/api/health");
+      $("#backendBadge").innerHTML = `<span class="dot"></span> ${esc(h.llm_backend)} · ${esc(h.llm_model)}`;
+    } catch (e) { $("#backendBadge").innerHTML = `<span class="dot" style="background:var(--err)"></span> offline`; }
+  }
+  async function loadExamples() {
+    try {
+      const items = await api("/api/examples");
+      const box = $("#exampleChips"); box.innerHTML = "";
+      items.forEach((ex) => {
+        const c = el("button", "chip", esc(ex.title));
+        c.onclick = () => { $("#prompt").value = ex.text; $("#prompt").focus(); };
+        box.appendChild(c);
+      });
+      if (!items.length) box.innerHTML = '<span class="hint">No example prompts found.</span>';
+    } catch (e) { /* non-fatal */ }
+  }
+
+  /* ---------- run ---------- */
+  $("#runBtn").onclick = runWorkflow;
+  async function runWorkflow() {
+    const prompt = $("#prompt").value.trim();
+    if (!prompt) { toast("Enter a prompt first."); return; }
+    const btn = $("#runBtn"); btn.disabled = true;
+    $("#runLabel").innerHTML = '<span class="spinner"></span> Running…';
+    $("#results").innerHTML = `<div class="card"><div class="empty"><div class="big"><span class="spinner" style="border-color:var(--border);border-top-color:var(--accent);width:26px;height:26px"></span></div><div>Running the multi-agent workflow…<br><span class="hint">The supervisor is routing between agents.</span></div></div></div>`;
+    try {
+      const res = await api("/api/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt }) });
+      renderResult(res);
+    } catch (e) {
+      $("#results").innerHTML = `<div class="card"><div class="msg err">Run failed: ${esc(e.message)}</div></div>`;
+    } finally {
+      btn.disabled = false; $("#runLabel").textContent = "Run workflow";
+    }
+  }
+
+  function renderResult(res) {
+    const s = res.summary || {};
+    const box = $("#results"); box.innerHTML = "";
+
+    // ---- status card ----
+    const head = el("div", "card");
+    const pills = el("div", "pills");
+    pills.appendChild(el("span", "pill mono", "run " + esc(res.run_id || "?")));
+    if (s.intent) pills.appendChild(el("span", "pill", "intent: " + esc(s.intent)));
+    if (s.validation_success != null) {
+      const ok = s.validation_success;
+      pills.appendChild(el("span", "pill " + (ok ? "ok" : "warn"), (ok ? "✓ " : "! ") + "validation " + (ok ? "passed" : (s.validation_status || "incomplete"))));
+    }
+    pills.appendChild(el("span", "pill", (s.real_write_performed ? "⚠ real write" : "dry-run only")));
+    head.appendChild(pills);
+    box.appendChild(head);
+
+    // ---- recorded datasets ----
+    const datasets = s.recorded_datasets || [];
+    if (datasets.length) {
+      const c = el("div", "card");
+      c.appendChild(el("h2", null, `Recorded datasets (${datasets.length})`));
+      datasets.forEach((d) => c.appendChild(datasetCard(d)));
+      box.appendChild(c);
+    }
+
+    // ---- artifacts / plans ----
+    const arts = artifactRows(s);
+    if (arts.length) {
+      const c = el("div", "card");
+      c.appendChild(el("h2", null, "Dry-run artifacts"));
+      arts.forEach((r) => c.appendChild(r));
+      box.appendChild(c);
+    }
+
+    // ---- warnings & errors ----
+    const notes = el("div", "");
+    (s.errors || []).forEach((e) => notes.appendChild(el("div", "msg err", `[${esc(e.agent || "?")}] ${esc(e.message)}`)));
+    (s.warnings || []).forEach((w) => notes.appendChild(el("div", "msg warn", `[${esc(w.agent || "?")}] ${esc(w.message)}`)));
+    if (notes.children.length) {
+      const c = el("div", "card");
+      c.appendChild(el("h2", null, `Warnings & errors (${notes.children.length})`));
+      c.appendChild(notes); box.appendChild(c);
+    }
+
+    // ---- report text ----
+    const rep = el("details"); rep.open = true;
+    rep.appendChild(el("summary", null, "Execution report"));
+    const rbody = el("div", "body");
+    rbody.appendChild(el("pre", "report", esc(res.report_text || "")));
+    rep.appendChild(rbody); box.appendChild(rep);
+
+    // ---- trace ----
+    box.appendChild(traceEl(s));
+  }
+
+  function datasetCard(d) {
+    const md = d.metadata || {};
+    const wrap = el("div", "ds");
+    const val = d.validation_success;
+    const valPill = val == null ? "" : `<span class="pill ${val ? "ok" : "warn"}">${val ? "✓ valid" : "! invalid"}</span>`;
+    const head = el("div", "ds-head");
+    head.innerHTML = `<span class="name">${esc(d.volume)}</span> ${valPill} <span class="pill mono">v${esc(d.times_recorded)}</span>`;
+    wrap.appendChild(head);
+    const kv = el("div", "kv");
+    const rows = [
+      ["dataset", md.dataset], ["modality", md.modality], ["organism", md.organism],
+      ["organ", md.organ], ["tissue", md.tissue_region],
+      ["resolution nm", md.resolution_nm, md.resolution_source],
+      ["shape xyz", md.shape_xyz, md.shape_source],
+      ["# mito", md.num_mito, md.num_mito_source],
+    ];
+    rows.forEach(([k, v, src]) => {
+      const d2 = el("div");
+      d2.innerHTML = `<span class="k">${k}:</span> ${esc(fmt(v))}` + (src ? `<span class="src">${esc(src)}</span>` : "");
+      kv.appendChild(d2);
+    });
+    wrap.appendChild(kv);
+    if (d.sidecar_path) wrap.appendChild(el("div", "sidecar", "↳ " + esc(d.sidecar_path)));
+    return wrap;
+  }
+
+  function artifactRows(s) {
+    const rows = [];
+    const add = (k, v) => { const r = el("div", "art-row"); r.innerHTML = `<span class="k">${k}</span><span class="v">${esc(v)}</span>`; rows.push(r); };
+    if (s.hf_staging_dir) add("HF staging dir", s.hf_staging_dir);
+    (s.mitoverse_update_files || []).forEach((f, i) => add(i === 0 ? "MitoVerse update" : "", f));
+    if (s.hf_upload_signal) add("HF upload signal", s.hf_upload_signal);
+    if (s.github_push_signal) add("GitHub push signal", s.github_push_signal);
+    if (s.local_data_inventory) add("Local data dir", s.local_data_inventory.data_dir + `  (${(s.local_data_inventory.volumes || []).length} volumes)`);
+    if (s.mitoverse_lookup) add("MitoVerse lookup", `found=${s.mitoverse_lookup.found} — ${s.mitoverse_lookup.message || ""}`);
+    return rows;
+  }
+
+  function traceEl(s) {
+    const events = [];
+    (s.agent_trace || []).forEach((a) => events.push([a.step, "agent", `${label(a.agent)}`, a.summary || a.status]));
+    (s.supervisor_decisions || []).forEach((d) => events.push([d.step, "sup", "Supervisor", `→ ${label(d.next_agent)}${d.reason ? " · " + d.reason : ""}`]));
+    events.sort((a, b) => a[0] - b[0]);
+    const det = el("details");
+    det.appendChild(el("summary", null, `Supervisor / agent trace (${events.length} steps)`));
+    const body = el("div", "body");
+    const tl = el("div", "timeline");
+    events.forEach(([step, kind, who, detail]) => {
+      const row = el("div", "tl " + (kind === "sup" ? "sup" : "agent"));
+      row.innerHTML = `<div class="marker">${kind === "sup" ? "◆" : "●"}</div><div class="content"><span class="who">${esc(who)}</span> <span class="detail">${esc(detail)}</span></div>`;
+      tl.appendChild(row);
+    });
+    if (!events.length) tl.appendChild(el("div", "hint", "No trace recorded."));
+    body.appendChild(tl); det.appendChild(body);
+    return det;
+  }
+  const label = (a) => (a || "").replace(/_agent$/, "").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) + (a && a.endsWith("_agent") ? " Agent" : "");
+
+  /* ---------- records ---------- */
+  let _records = [];
+  async function loadRecords() {
+    $("#recordsTable").innerHTML = '<div class="hint">Loading…</div>';
+    try {
+      const data = await api("/api/records");
+      _records = data.records || [];
+      $("#recordMeta").textContent = `${_records.length} volume(s) · ${data.store_path || ""}`;
+      renderRecords();
+    } catch (e) { $("#recordsTable").innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
+  }
+  $("#refreshRecords").onclick = loadRecords;
+  $("#recordSearch").oninput = renderRecords;
+  function renderRecords() {
+    const q = $("#recordSearch").value.toLowerCase();
+    const rows = _records.filter((r) => {
+      if (!q) return true;
+      const md = r.metadata || {};
+      return [r.volume, md.organism, md.modality, md.dataset, md.organ].join(" ").toLowerCase().includes(q);
+    });
+    if (!rows.length) { $("#recordsTable").innerHTML = '<div class="empty"><div class="big">📭</div><div>No records yet. Run the workflow to record metadata.</div></div>'; return; }
+    const t = el("table");
+    t.innerHTML = "<thead><tr><th>Volume</th><th>Organism</th><th>Modality</th><th>Shape</th><th># Mito</th><th>Valid</th><th>Versions</th></tr></thead>";
+    const tb = el("tbody");
+    rows.forEach((r) => {
+      const md = r.metadata || {};
+      const tr = el("tr");
+      tr.innerHTML = `<td class="mono">${esc(r.volume)}</td><td>${esc(md.organism || "—")}</td><td>${esc(md.modality || "—")}</td>`
+        + `<td class="mono">${esc(fmt(md.shape_xyz))}</td><td>${esc(fmt(md.num_mito))}</td>`
+        + `<td>${r.validation_success == null ? "—" : (r.validation_success ? "✓" : "✗")}</td><td>${esc(r.times_recorded || 1)}</td>`;
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb);
+    $("#recordsTable").innerHTML = ""; $("#recordsTable").appendChild(t);
+  }
+
+  /* ---------- settings ---------- */
+  const overlay = $("#settingsOverlay");
+  $("#settingsBtn").onclick = openSettings;
+  $("#settingsCancel").onclick = () => overlay.classList.remove("open");
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.classList.remove("open"); };
+  $("#setBackend").onchange = syncSettingsRows;
+  function syncSettingsRows() {
+    const b = $("#setBackend").value;
+    $("#openaiRow").style.display = b === "openai" ? "" : "none";
+    $("#codexRow").style.display = b === "codex_cli" ? "" : "none";
+  }
+  async function openSettings() {
+    try {
+      const s = await api("/api/settings");
+      $("#setBackend").value = s.llm_backend || "openai";
+      $("#setModel").value = s.llm_model || "";
+      $("#setCodex").value = s.codex_path || "";
+      $("#setKey").value = "";
+      $("#keyState").textContent = s.openai_api_key_set ? `(current: ${s.openai_api_key_preview})` : "(not set)";
+      syncSettingsRows();
+      overlay.classList.add("open");
+    } catch (e) { toast("Could not load settings."); }
+  }
+  $("#settingsSave").onclick = async () => {
+    const body = { llm_backend: $("#setBackend").value, llm_model: $("#setModel").value.trim(), codex_path: $("#setCodex").value.trim() || null };
+    const key = $("#setKey").value.trim();
+    if (key) body.openai_api_key = key;
+    try {
+      await api("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      overlay.classList.remove("open"); toast("Settings saved."); loadHealth();
+    } catch (e) { toast("Save failed: " + e.message); }
+  };
+
+  /* ---------- keyboard ---------- */
+  $("#prompt").addEventListener("keydown", (e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") runWorkflow(); });
+
+  loadHealth(); loadExamples();
+  </script>
+</body>
+</html>

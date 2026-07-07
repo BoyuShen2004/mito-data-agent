@@ -6,4 +6,7 @@ python-dotenv
 numpy
 tifffile
 pandas
+fastapi
+uvicorn
 pytest
+httpx

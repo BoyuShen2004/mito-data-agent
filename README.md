@@ -110,6 +110,7 @@ Everything runs through `python -m mito_data_agent <command>`.
 |---------|-------------|
 | `run` | Run the multi-agent workflow on a prompt |
 | `records` | Query the recorded-metadata store |
+| `web` | Serve the web UI |
 | `clear` | Delete generated artifacts under `outputs/` |
 
 ### `run`
@@ -148,6 +149,26 @@ get_record("vol1")
 query_records(organism="Human", modality="FIB-SEM")
 ```
 
+### `web` — browser UI
+
+```bash
+python -m mito_data_agent web                 # http://127.0.0.1:7860
+python -m mito_data_agent web --port 8000     # pick a port (auto-falls-back if busy)
+```
+
+A single-page UI (FastAPI backend, no build step) with two views:
+
+- **Run** — a prompt composer with one-click example prompts, then a rendered
+  result: a status strip (run id / intent / validation), **recorded-dataset
+  cards** (with `file`-vs-`prompt` source tags), dry-run artifacts, warnings, the
+  full execution report, and a **supervisor/agent trace timeline**. `⌘/Ctrl+Enter`
+  runs the prompt.
+- **Records** — a searchable table over the metadata ledger.
+
+The gear icon opens **LLM settings** (backend / model / OpenAI key / Codex path),
+persisted to `outputs/logs/` so the UI works without env vars. Every run is
+dry-run — nothing is uploaded or pushed.
+
 ### `clear`
 
 ```bash
@@ -166,7 +187,8 @@ mito_data_agent/
     execution_reports/  metadata_store/  hf_staging/  mitoverse_updates/  logs/  cache/
   src/mito_data_agent/
     __main__.py                      # python -m mito_data_agent <command>
-    cli/                             # run, records, clear
+    cli/                             # run, records, web, clear
+    web/                             # FastAPI backend + single-page UI (static/index.html)
     agents/                          # the multi-agent workflow (FLOW only)
       supervisor_llm.py              #   LLM router
       supervisor_agent.py            #   supervisor node + safety net

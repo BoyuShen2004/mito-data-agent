@@ -17,10 +17,12 @@ dependencies = [
     "tifffile",
     "pandas",
     "openai",
+    "fastapi",
+    "uvicorn",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest", "httpx"]
 
 [project.scripts]
 mito-clear = "mito_data_agent.cli.clear:main"

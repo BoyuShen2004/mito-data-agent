@@ -57,7 +57,8 @@ def build_multi_agent_graph(policy: SupervisorPolicy | None = None):
     """Compile the supervisor-routed multi-agent workflow.
 
     Args:
-        policy: optional routing policy (defaults to the rule-based supervisor).
+        policy: optional routing policy (defaults to the LLM-driven supervisor
+            that picks the next agent via native function calling).
     """
     graph = StateGraph(MultiAgentState)
 

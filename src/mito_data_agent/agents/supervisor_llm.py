@@ -1,12 +1,15 @@
 """LLM-driven supervisor: the router *reasons* about the next agent.
 
-There are no hardcoded routes or keyword rules. On each turn the supervisor
-hands the LLM the user's request, the agent catalog, and a snapshot of what has
-been done so far, and asks it to pick the single next agent (or ``finish``).
+There are no hardcoded routes or keyword rules. On each turn the supervisor hands
+the LLM the user's request, the agent catalog, and a snapshot of what has been
+done so far. On the OpenAI backend the agents are exposed as **callable tools**
+and the LLM picks the next step via native function calling (``tool_choice=
+"required"``); on backends without tool calling (codex_cli) it makes the same
+decision as a JSON object.
 
 Testing: the LLM call is isolated behind :func:`get_supervisor_model`. Tests
 monkeypatch that to a scripted model so the graph is deterministic offline, while
-the production ``LLMSupervisor`` code (context building, JSON parsing, allow-list
+the production routing code (context building, tool/JSON handling, allow-list
 enforcement) still runs.
 """
 
@@ -47,6 +50,13 @@ to save the record to the local store, even if validation failed.
 `report_agent`.
 - Run `report_agent` once, near the end, then `finish`.
 - Never pick an agent whose work product already exists (avoid loops).
+"""
+
+# Native tool-calling (OpenAI) is the primary path: the agents are exposed as
+# callable tools and the model *calls* the one to run next. The JSON suffix is
+# only appended for the fallback path (codex_cli / no tool-calling), which asks
+# for the same decision as a JSON object instead.
+_JSON_FORMAT_SUFFIX = """
 
 Respond with ONLY a JSON object:
 {"next_agent": "<agent or finish>", "reason": "<one sentence>", "confidence": "low|medium|high"}
@@ -67,6 +77,45 @@ def _build_context(state: MultiAgentState) -> dict[str, Any]:
     }
 
 
+_FINISH_DESCRIPTION = (
+    "End the run: the user's request has been satisfied and the final report has "
+    "been written. Call this when no further agent is needed."
+)
+
+
+def _build_agent_tools(context: dict[str, Any]) -> list[dict[str, Any]]:
+    """Expose each allowed agent (and ``finish``) as a callable tool for the LLM.
+
+    The model chooses the next step by *calling* one of these functions — genuine
+    function calling rather than emitting a routing string. Each tool's
+    description is the agent's catalog entry so the LLM reasons from it.
+    """
+    tools: list[dict[str, Any]] = []
+    for name in context["allowed"]:
+        description = _FINISH_DESCRIPTION if name == "finish" else context["agents"].get(name, name)
+        tools.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "description": description,
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "reason": {
+                                "type": "string",
+                                "description": "One sentence: why run this next.",
+                            }
+                        },
+                        "required": ["reason"],
+                        "additionalProperties": False,
+                    },
+                },
+            }
+        )
+    return tools
+
+
 def _build_user_prompt(context: dict[str, Any]) -> str:
     """Render the routing context into a user prompt string for the LLM."""
     catalog = "\n".join(f"- {name}: {desc}" for name, desc in context["agents"].items())
@@ -83,17 +132,42 @@ def _build_user_prompt(context: dict[str, Any]) -> str:
 
 
 class SupervisorModel:
-    """Production supervisor model — calls the configured LLM backend for a JSON
-    routing decision (same OpenAI / Codex CLI plumbing as prompt parsing)."""
+    """Production supervisor model.
+
+    On the OpenAI backend the LLM decides the next step via **native function
+    calling** — the agents are exposed as tools and the model *calls* one. On
+    backends without tool calling (codex_cli) it falls back to the same decision
+    expressed as JSON. Either way it returns
+    ``{"next_agent", "reason", "confidence"}``.
+    """
 
     def route(self, context: dict[str, Any]) -> dict[str, Any]:
         from mito_data_agent.llm.llm_client import get_llm_client
 
+        client = get_llm_client()
         user_prompt = _build_user_prompt(context)
-        last_exc: Exception | None = None
-        for _attempt in range(2):  # one retry for transient LLM slowness/timeouts
+
+        if client.supports_tool_calling():
+            tools = _build_agent_tools(context)
+            last_exc: Exception | None = None
+            for _attempt in range(2):  # one retry for transient LLM slowness/timeouts
+                try:
+                    result = client.route_via_tools(_SYSTEM_PROMPT, user_prompt, tools)
+                    args = result.get("arguments", {})
+                    return {
+                        "next_agent": result.get("name", "finish"),
+                        "reason": args.get("reason", ""),
+                        "confidence": args.get("confidence", "high"),
+                    }
+                except Exception as exc:  # noqa: BLE001
+                    last_exc = exc
+            raise last_exc  # type: ignore[misc]
+
+        # Fallback: JSON routing (backend without native tool calling).
+        last_exc = None
+        for _attempt in range(2):
             try:
-                return get_llm_client().complete_json(_SYSTEM_PROMPT, user_prompt)
+                return client.complete_json(_SYSTEM_PROMPT + _JSON_FORMAT_SUFFIX, user_prompt)
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
         raise last_exc  # type: ignore[misc]

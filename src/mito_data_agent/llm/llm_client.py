@@ -67,6 +67,52 @@ class LLMClient:
         )
         return self._extract_json(completion.choices[0].message.content or "")
 
+    def supports_tool_calling(self) -> bool:
+        """True when the active backend can do native function/tool calling (OpenAI)."""
+        apply_settings_to_config(load_settings())
+        try:
+            return self._resolve_backend() == "openai"
+        except Exception:  # noqa: BLE001 — treat "can't resolve" as no tool-calling
+            return False
+
+    def route_via_tools(
+        self, system_prompt: str, user_prompt: str, tools: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        """Let the LLM pick the next step via native OpenAI tool calling.
+
+        Each entry in ``tools`` is one callable option (an agent, or ``finish``).
+        With ``tool_choice="required"`` the model *must* call exactly one — that
+        function's name is the chosen next agent. Returns
+        ``{"name": <tool>, "arguments": {...}}``.
+        """
+        try:
+            from openai import OpenAI
+        except ImportError as exc:
+            raise RuntimeError("openai package required for tool calling. pip install openai") from exc
+
+        settings = load_settings()
+        client = OpenAI(api_key=self._get_openai_api_key())
+        completion = client.chat.completions.create(
+            model=settings.llm_model or config.LLM_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            tools=tools,
+            tool_choice="required",
+        )
+        message = completion.choices[0].message
+        tool_calls = getattr(message, "tool_calls", None)
+        if not tool_calls:
+            raise RuntimeError("supervisor: model returned no tool call")
+        call = tool_calls[0]
+        raw_args = call.function.arguments or "{}"
+        try:
+            arguments = json.loads(raw_args)
+        except json.JSONDecodeError:
+            arguments = {}
+        return {"name": call.function.name, "arguments": arguments}
+
     def _complete_codex_json(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
         codex = self._get_codex_path()
         if codex is None:

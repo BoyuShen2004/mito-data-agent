@@ -45,9 +45,12 @@ supervisor_agent  ← ───────────────────�
   dispatched by the supervisor and returns to it, so all work flows through one
   uniform loop.
 - **Supervisor = LLM** (`agents/supervisor_llm.py`). Each turn it gets the user
-  request, the agent catalog, and a progress snapshot, and returns
-  `{next_agent, reason, confidence}`. On an LLM outage/timeout a safety net keeps
-  the run from crashing (retries, then advances by data dependency).
+  request, the agent catalog, and a progress snapshot. On the **OpenAI** backend
+  the agents are exposed as callable tools and the LLM picks the next step via
+  **native function calling** (`tool_choice="required"`); on backends without
+  tool calling (**codex_cli**) it makes the same decision as JSON. On an LLM
+  outage/timeout a safety net keeps the run from crashing (retries, then advances
+  by data dependency).
 - **Agents are thin flow.** All output *formatting* lives in tools
   (`tools/reporting.py`), not in the agent modules.
 - **Trace channels.** Every worker appends to `agent_trace`; every routing

@@ -22,7 +22,10 @@ from mito_data_agent.tools.metadata_store import (
     record_metadata,
     write_metadata_sidecar,
 )
-from mito_data_agent.tools.reconcile_metadata import reconcile_with_files
+from mito_data_agent.tools.reconcile_metadata import (
+    canonical_volume_from_files,
+    reconcile_with_files,
+)
 from mito_data_agent.utils.paths import safe_slug, to_relative_path
 
 
@@ -111,6 +114,11 @@ def metadata_record_agent(state: MultiAgentState) -> dict:
         # notes, NOT warnings — the resolution is the intended behaviour.
         metadata, ds_conflicts = reconcile_with_files(metadata)
         conflicts.extend(ds_conflicts)
+        # Key the record + sidecar to the actual data-file name (silently), so the
+        # <name>.metadata.json matches the TIFFs on disk rather than a prompt name.
+        canonical = canonical_volume_from_files(metadata)
+        if canonical:
+            metadata = {**metadata, "volume": canonical}
         try:
             entry = record_metadata(
                 metadata,

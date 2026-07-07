@@ -301,7 +301,6 @@
       <input type="checkbox" id="traceToggle" /><span class="track"></span> Agent trace
     </label>
     <span class="badge" id="backendBadge" title="Active LLM backend"><span class="dot"></span> …</span>
-    <button class="btn-ghost" id="newChatBtn" title="Start a new conversation">＋ New chat</button>
     <button class="btn-ghost" id="clearBtn" title="Delete everything under outputs/ (reports, artifacts, ledger)">Clear outputs</button>
     <button class="icon-btn" id="settingsBtn" title="LLM settings">⚙️</button>
   </header>
@@ -443,7 +442,6 @@
   promptEl.addEventListener("input", () => { autoGrow(); syncSend(); });
   promptEl.addEventListener("keydown", (e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); runWorkflow(); } });
   $("#runBtn").onclick = runWorkflow;
-  $("#newChatBtn").onclick = newChat;
   $("#newChatSide").onclick = newChat;
 
   /* ---------- chat history ---------- */

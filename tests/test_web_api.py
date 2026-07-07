@@ -43,6 +43,14 @@ def isolate_settings(tmp_path, monkeypatch):
     monkeypatch.setattr(settings_store, "_settings_path", lambda: tmp_path / "llm_connection.json")
 
 
+@pytest.fixture(autouse=True)
+def isolate_chats(tmp_path, monkeypatch):
+    """Redirect chat storage to a temp dir so tests never touch real chat history."""
+    from mito_data_agent.tools import chat_store
+
+    monkeypatch.setattr(chat_store, "get_outputs_dir", lambda: tmp_path)
+
+
 @pytest.fixture
 def client():
     with TestClient(app) as c:
@@ -144,6 +152,45 @@ def test_clear_endpoint(client, monkeypatch, tmp_path):
     assert (outputs / "execution_reports").is_dir()
     assert not (outputs / "execution_reports" / "run1.json").exists()
     assert not (outputs / "hf_staging" / "vol1").exists()
+
+
+def test_chats_crud(client):
+    assert client.get("/api/chats").json()["chats"] == []
+
+    turns = [
+        {"role": "user", "text": "Prepare vol1 for upload to MitoVerse"},
+        {"role": "assistant", "result": {"run_id": "run_x", "summary": {}}},
+    ]
+    created = client.post("/api/chats", json={"turns": turns}).json()
+    cid = created["id"]
+    assert created["title"].startswith("Prepare vol1")  # title from first user turn
+    assert created["created_at"] and created["updated_at"]
+
+    listing = client.get("/api/chats").json()["chats"]
+    assert [c["id"] for c in listing] == [cid]
+    assert listing[0]["turn_count"] == 2
+
+    got = client.get(f"/api/chats/{cid}")
+    assert got.status_code == 200 and len(got.json()["turns"]) == 2
+
+    turns.append({"role": "user", "text": "and again"})
+    updated = client.put(f"/api/chats/{cid}", json={"turns": turns}).json()
+    assert updated["id"] == cid and len(updated["turns"]) == 3
+    assert updated["created_at"] == created["created_at"]  # preserved across updates
+
+    assert client.delete(f"/api/chats/{cid}").json()["deleted"] is True
+    assert client.get(f"/api/chats/{cid}").status_code == 404
+    assert client.delete(f"/api/chats/{cid}").status_code == 404
+
+
+def test_chat_store_rejects_path_traversal(tmp_path, monkeypatch):
+    from mito_data_agent.tools import chat_store
+
+    monkeypatch.setattr(chat_store, "get_outputs_dir", lambda: tmp_path)
+    with pytest.raises(ValueError):
+        chat_store.get_chat("../secret")
+    with pytest.raises(ValueError):
+        chat_store.delete_chat("a/b")
 
 
 def test_settings_roundtrip(client):

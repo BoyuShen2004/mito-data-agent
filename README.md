@@ -156,7 +156,10 @@ python -m mito_data_agent web                 # http://127.0.0.1:7860
 python -m mito_data_agent web --port 8000     # pick a port (auto-falls-back if busy)
 ```
 
-A single-page UI (FastAPI backend, no build step) with two views:
+A single-page UI (FastAPI backend, no build step). A left **chats sidebar** keeps
+your **previous conversations** (persisted under `outputs/chats/`, newest first) —
+click one to reopen it, use **＋ New chat** to start fresh, or hover to delete.
+Two views:
 
 - **Run** — a ChatGPT-style prompt composer with one-click example prompts. While
   the workflow runs, a **live trace streams in** step-by-step (supervisor routing →
@@ -177,6 +180,9 @@ dry-run — nothing is uploaded or pushed.
 ```bash
 python -m mito_data_agent clear -y   # wipe outputs/ (keeps folder structure)
 ```
+
+Clears run artifacts and the recorded-metadata ledger. **Chat history
+(`outputs/chats/`) is preserved** — it is not part of the cleared set.
 
 ## Project layout
 

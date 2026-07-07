@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field
 
 from mito_data_agent import config
 from mito_data_agent.agents.runner import run_multi_agent, stream_multi_agent
+from mito_data_agent.tools import chat_store
 from mito_data_agent.llm.settings_store import (
     LLMConnectionSettings,
     apply_settings_to_config,
@@ -86,6 +87,11 @@ class SettingsUpdate(BaseModel):
     llm_model: Optional[str] = None
     openai_api_key: Optional[str] = None
     codex_path: Optional[str] = None
+
+
+class ChatSave(BaseModel):
+    turns: list[dict] = Field(default_factory=list)
+    title: Optional[str] = None
 
 
 # --------------------------------------------------------------------------- #
@@ -194,6 +200,48 @@ def clear() -> dict:
         "removed_dirs": stats["removed_dirs"],
         "outputs_dir": to_relative_path(get_outputs_dir()),
     }
+
+
+@app.get("/api/chats")
+def chats() -> dict:
+    """List saved conversations (summaries only), newest first."""
+    return {"chats": chat_store.list_chats()}
+
+
+@app.post("/api/chats")
+def create_chat(payload: ChatSave) -> dict:
+    """Create a new conversation and return the stored document (with its id)."""
+    return chat_store.save_chat(payload.turns, title=payload.title)
+
+
+@app.get("/api/chats/{chat_id}")
+def read_chat(chat_id: str) -> dict:
+    try:
+        chat = chat_store.get_chat(chat_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if chat is None:
+        raise HTTPException(status_code=404, detail=f"No chat: {chat_id}")
+    return chat
+
+
+@app.put("/api/chats/{chat_id}")
+def update_chat(chat_id: str, payload: ChatSave) -> dict:
+    try:
+        return chat_store.save_chat(payload.turns, chat_id=chat_id, title=payload.title)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.delete("/api/chats/{chat_id}")
+def remove_chat(chat_id: str) -> dict:
+    try:
+        deleted = chat_store.delete_chat(chat_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"No chat: {chat_id}")
+    return {"deleted": True, "id": chat_id}
 
 
 @app.get("/api/settings")

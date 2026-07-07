@@ -186,6 +186,14 @@
     .tl .content { font-size: 12.5px; }
     .tl .who { font-weight: 600; }
     .tl .detail { color: var(--muted); }
+    /* step-by-step headers (one per supervisor routing decision) */
+    .tl-step { display: flex; align-items: center; gap: 8px; margin: 13px 0 3px; flex-wrap: wrap; }
+    .tl-step:first-child { margin-top: 0; }
+    .stepno { font-weight: 700; color: var(--accent); font-size: 10px; letter-spacing: .04em;
+      background: var(--accent-weak); padding: 2px 8px; border-radius: 999px; text-transform: uppercase; }
+    .tl-step .who { font-weight: 600; font-size: 12.5px; }
+    .tl-reason { margin: 0 0 4px 8px; padding-left: 11px; border-left: 2px solid var(--accent-weak);
+      color: var(--muted); font-size: 12px; line-height: 1.45; }
 
     .typing { display: inline-flex; gap: 4px; padding: 6px 2px; }
     .typing span { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); opacity: .5;
@@ -683,48 +691,61 @@
     return row;
   }
   function trSub(detail) { return el("div", "tl-sub", `<span class="arrow">↳</span><span>${esc(detail)}</span>`); }
-  const supDetail = (d) => `→ ${label(d.next_agent)}${d.reason ? " · " + d.reason : ""}`;
+
+  // A numbered "Step N" header: the supervisor decides which node runs next.
+  function stepHeader(n, decision) {
+    const hdr = el("div", "tl-step");
+    hdr.innerHTML = `<span class="stepno">Step ${n}</span>`
+      + `<span class="who">🧭 Supervisor → ${esc(label(decision.next_agent))}</span>`;
+    return hdr;
+  }
 
   function traceEl(s) {
-    const events = [];
-    (s.supervisor_decisions || []).forEach((d) => events.push({ step: d.step, kind: "sup", who: "Supervisor", detail: supDetail(d), sub: [] }));
-    (s.agent_trace || []).forEach((a) => events.push({ step: a.step, kind: "agent", who: label(a.agent), detail: a.summary || a.status, sub: a.details || [], status: a.status }));
-    // Order by step; on ties the supervisor decision precedes the agent it dispatched.
-    events.sort((a, b) => (a.step - b.step) || (a.kind === "sup" ? -1 : 1));
-
-    const nAgents = (s.agent_trace || []).length, nSup = (s.supervisor_decisions || []).length;
+    const decisions = s.supervisor_decisions || [];
+    const agents = s.agent_trace || [];
     const det = el("details", "trace-block"); det.open = true;
-    det.appendChild(el("summary", null, `Trace — ${nSup} routing + ${nAgents} agent step(s)`));
+    det.appendChild(el("summary", null, `Agent trace — ${decisions.length} step(s)`));
     const body = el("div", "body");
     const tl = el("div", "timeline");
-    events.forEach((e) => {
-      tl.appendChild(trRow(e.kind, e.who, e.detail, e.status));
-      (e.sub || []).forEach((d) => tl.appendChild(trSub(d)));
+
+    decisions.forEach((d, i) => {
+      tl.appendChild(stepHeader(i + 1, d));
+      if (d.reason) tl.appendChild(el("div", "tl-reason", esc(d.reason)));
+      // The node this step dispatched (the next agent to run after this decision).
+      const agent = agents.find((a) => a.step > d.step && a.agent === d.next_agent);
+      if (agent) {
+        tl.appendChild(trRow("agent", label(agent.agent), agent.summary || agent.status, agent.status));
+        (agent.details || []).forEach((x) => tl.appendChild(trSub(x)));
+      }
     });
-    if (!events.length) tl.appendChild(el("div", "hint", "No trace recorded."));
+    if (!decisions.length) tl.appendChild(el("div", "hint", "No trace recorded."));
     body.appendChild(tl); det.appendChild(body);
     return det;
   }
 
   // Live trace panel that grows as stream events arrive.
   function liveTraceNode() {
-    const node = el("div", "block live");
+    const node = el("div", "block");
     const head = el("div", "live-head");
-    head.innerHTML = `<span class="spinner-dark"></span><span class="live-label">Starting…</span>`;
-    const labelEl = head.querySelector(".live-label");
+    head.innerHTML = `<span class="spinner-dark"></span><span class="live-label">Working…</span>`;
+    // The step-by-step timeline is a trace-block: it only shows when "Agent trace"
+    // is on. With it off, just the "Working…" indicator above remains.
+    const wrap = el("div", "trace-block");
     const tl = el("div", "timeline");
-    node.appendChild(head); node.appendChild(tl);
+    wrap.appendChild(tl);
+    node.appendChild(head); node.appendChild(wrap);
+    let stepNum = 0;
     return {
       node,
       addEvents(msg) {
         (msg.supervisor_decisions || []).forEach((d) => {
-          tl.appendChild(trRow("sup", "Supervisor", supDetail(d)));
-          labelEl.textContent = `Routing to ${label(d.next_agent)}…`;
+          stepNum += 1;
+          tl.appendChild(stepHeader(stepNum, d));
+          if (d.reason) tl.appendChild(el("div", "tl-reason", esc(d.reason)));
         });
         (msg.agent_trace || []).forEach((a) => {
           tl.appendChild(trRow("agent", label(a.agent), a.summary || a.status, a.status));
           (a.details || []).forEach((d) => tl.appendChild(trSub(d)));
-          labelEl.textContent = `${label(a.agent)} finished`;
         });
       },
     };

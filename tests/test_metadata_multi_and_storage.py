@@ -131,9 +131,10 @@ def test_record_agent_applies_file_over_prompt_and_logs_conflict():
     assert any("conflict resolved (file wins)" in d for d in trace_details)
 
 
-def test_record_keyed_to_dataset_name_not_file_name():
-    """The record + sidecar are named after the dataset name, NOT the on-disk file
-    stem — even though the data file (vol1) has a different name."""
+def test_record_keyed_to_data_file_name_when_conflict():
+    """When the prompt name conflicts with the on-disk data file, the DATA FILE
+    name wins — the record + sidecar are keyed to the file stem (vol1), even from
+    a filename hint buried in notes."""
     state = _base_state()
     state["schema_validation"] = {"success": True, "status": "passed"}
     state["merged_metadata"] = {}
@@ -141,18 +142,18 @@ def test_record_keyed_to_dataset_name_not_file_name():
         "intent": "metadata_only_update",
         "datasets": [
             {
-                "volume": "FancyDatasetName",   # deliberately different from the file
-                "dataset": "FancyDatasetName",
-                "raw_file_path": "../mito_data_agent_data/vol1_0000.tiff",
-                "label_file_path": "../mito_data_agent_data/vol1.tiff",
+                "volume": "FancyPromptName",   # conflicts with the real file name
+                "dataset": "FancyPromptName",
+                # No explicit path — only a filename hint in free-text notes.
+                "notes": ["Filename: vol1_0000.tiff", "Source volume: vol1"],
             }
         ],
     }
     out = metadata_record_agent(state)
     rec = out["metadata_record"]["volumes"][0]
 
-    assert rec["volume"] == "FancyDatasetName"  # dataset name, NOT file stem "vol1"
-    assert rec["sidecar_path"].endswith("fancydatasetname.metadata.json")
+    assert rec["volume"] == "vol1"  # data-file name, NOT "FancyPromptName"
+    assert rec["sidecar_path"].endswith("vol1.metadata.json")
 
 
 def test_report_shows_every_recorded_dataset():

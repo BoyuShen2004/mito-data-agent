@@ -56,25 +56,74 @@ def _guess_from_name(name: Optional[str]) -> tuple[Optional[str], Optional[str]]
     )
 
 
+def _stem_of(name: str) -> str:
+    """Basename with a known TIFF suffix stripped (``a/b_0000.tiff`` -> ``b``)."""
+    stem = Path(name).name
+    for suffix in _STRIP_SUFFIXES:
+        if stem.endswith(suffix):
+            return stem[: -len(suffix)]
+    return stem
+
+
+def _name_hints(metadata: dict) -> list[str]:
+    """Every string in the metadata that might name a data file.
+
+    Includes the explicit fields AND free-text ``notes`` — the LLM often drops a
+    "Filename: …" / "Source volume: …" line into notes because the schema has no
+    dedicated field, so we mine those for ``.tif(f)`` tokens too.
+    """
+    hints: list[str] = []
+    for field in (
+        "raw_file_path", "label_file_path", "metadata_file_path",
+        "source_volume", "filename", "provenance", "volume", "dataset",
+    ):
+        value = metadata.get(field)
+        if isinstance(value, str) and value.strip():
+            hints.append(value)
+    notes = metadata.get("notes") or []
+    if isinstance(notes, str):
+        notes = [notes]
+    for note in notes:
+        for token in str(note).replace(",", " ").replace(":", " ").split():
+            if token.lower().endswith((".tif", ".tiff")):
+                hints.append(token)
+    return hints
+
+
 def _locate_files(metadata: dict) -> tuple[Optional[str], Optional[str]]:
-    """Find a dataset's raw/label files from explicit paths or name hints."""
+    """Find a dataset's raw/label files from explicit paths or any name hint."""
     raw = _existing(metadata.get("raw_file_path"))
     label = _existing(metadata.get("label_file_path"))
     if raw or label:
         return raw, label
-    for hint in (
-        metadata.get("raw_file_path"),
-        metadata.get("label_file_path"),
-        metadata.get("metadata_file_path"),
-        metadata.get("volume"),
-        metadata.get("dataset"),
-        metadata.get("provenance"),
-        metadata.get("source_volume"),
-    ):
+    for hint in _name_hints(metadata):
         raw, label = _guess_from_name(hint)
         if raw or label:
             return raw, label
     return None, None
+
+
+def canonical_volume_from_files(metadata: dict) -> Optional[str]:
+    """The on-disk data-file stem this dataset matches, or ``None`` if none.
+
+    **Data-file name wins over the prompt name.** When a dataset's real TIFFs
+    exist in the data directory (matched via any file path / filename / source
+    hint, including notes), the record + ``<name>.metadata.json`` are keyed to
+    that file stem (e.g. ``jrc_mus-liver_recon-1_test0``), not the prompt-supplied
+    dataset name (e.g. ``MitoHardLiver``). Returns ``None`` when no data file
+    matches, so a dataset with no on-disk file keeps its prompt name.
+    """
+    data = resolve_path(config.DEFAULT_DATA_DIR)
+    if not data:
+        return None
+    for hint in _name_hints(metadata):
+        stem = _stem_of(hint)
+        if not stem:
+            continue
+        if any((data / f"{stem}{suffix}").exists() for suffix in
+               (".tiff", ".tif", "_0000.tiff", "_0000.tif")):
+            return stem
+    return None
 
 
 def _as_tuple(value):

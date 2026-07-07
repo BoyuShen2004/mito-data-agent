@@ -17,7 +17,10 @@ from mito_data_agent.tools.metadata_store import (
     record_metadata,
     write_metadata_sidecar,
 )
-from mito_data_agent.tools.reconcile_metadata import reconcile_with_files
+from mito_data_agent.tools.reconcile_metadata import (
+    canonical_volume_from_files,
+    reconcile_with_files,
+)
 from mito_data_agent.tools.validate_metadata import validate_required_metadata
 from mito_data_agent.utils.paths import safe_slug, to_relative_path
 
@@ -87,9 +90,10 @@ def record_datasets(state: dict) -> dict[str, Any]:
     """Record every dataset in the request to the store + a data-dir sidecar.
 
     Returns ``{"metadata_record", "details", "conflicts", "errors"}``. Every
-    dataset is validated (so per-dataset validity is consistent) and keyed to its
-    **dataset name** (the ``<name>.metadata.json`` sidecar uses the dataset name,
-    not a file name). Conflicts (shape / # Mito / resolution) are auto-resolved in
+    dataset is validated (so per-dataset validity is consistent). When a dataset's
+    real data files exist on disk under a different name, the record +
+    ``<name>.metadata.json`` are keyed to that **data-file name** (data wins over
+    the prompt name). Conflicts (shape / # Mito / resolution) are auto-resolved in
     favour of the file and are informational, not warnings.
     """
     to_write = collect_datasets_to_record(state)
@@ -108,8 +112,14 @@ def record_datasets(state: dict) -> dict[str, Any]:
     for metadata, _ in to_write:
         metadata, ds_conflicts = reconcile_with_files(metadata)
         conflicts.extend(ds_conflicts)
+        # Data-file name wins over the prompt name: when this dataset's real TIFFs
+        # are on disk under a different name, key the record + sidecar to that file
+        # (e.g. MitoHardLiver -> jrc_mus-liver_recon-1_test0).
+        canonical = canonical_volume_from_files(metadata)
+        if canonical and canonical != metadata.get("volume"):
+            metadata = {**metadata, "volume": canonical}
         # Validate EVERY dataset (not just the primary) so per-dataset validity is
-        # consistent. The record is keyed to the dataset name (volume) as-is.
+        # consistent.
         validated = validate_required_metadata(metadata).success
         try:
             entry = record_metadata(

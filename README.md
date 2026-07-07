@@ -110,7 +110,6 @@ Everything runs through `python -m mito_data_agent <command>`.
 |---------|-------------|
 | `run` | Run the multi-agent workflow on a prompt |
 | `records` | Query the recorded-metadata store |
-| `reconcile` | Rename stored records/sidecars to match on-disk data files |
 | `web` | Serve the web UI |
 | `clear` | Delete generated artifacts under `outputs/` |
 
@@ -175,20 +174,6 @@ Two views:
 The gear icon opens **LLM settings** (backend / model / OpenAI key / Codex path),
 persisted to `outputs/logs/` so the UI works without env vars. Every run is
 dry-run — nothing is uploaded or pushed.
-
-### `reconcile` — make stored names match the data files
-
-```bash
-python -m mito_data_agent reconcile --dry-run   # preview
-python -m mito_data_agent reconcile             # apply
-```
-
-Renames any recorded volume + its `<name>.metadata.json` to the actual on-disk
-file stem (e.g. `MitoHardLiver` → `jrc_mus-liver_recon-1_test0`) when the data
-files can be located (via file paths or a `provenance`/name hint), backfilling
-the raw/label paths and removing the stale sidecar. The `dataset` name and
-version history are preserved. This is the batch/repair counterpart to the
-silent per-run naming resolution done during `run`.
 
 ### `clear`
 

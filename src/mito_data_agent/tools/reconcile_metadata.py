@@ -77,32 +77,6 @@ def _locate_files(metadata: dict) -> tuple[Optional[str], Optional[str]]:
     return None, None
 
 
-def _stem_from_file(path: Optional[str]) -> Optional[str]:
-    """Strip a known TIFF suffix to get a volume stem (``foo_0000.tiff`` -> ``foo``)."""
-    if not path:
-        return None
-    stem = Path(path).name
-    for suffix in _STRIP_SUFFIXES:
-        if stem.endswith(suffix):
-            stem = stem[: -len(suffix)]
-            break
-    return stem or None
-
-
-def canonical_volume_from_files(metadata: dict) -> Optional[str]:
-    """The on-disk file stem to use as the volume identifier, or None if no file.
-
-    When a dataset's real data files exist in the data directory, the metadata
-    sidecar + store record should be keyed to the **file name** (e.g.
-    ``jrc_mus-liver_recon-1_test0``), not a prompt-supplied dataset name (e.g.
-    ``MitoHardLiver``), so the ``.metadata.json`` sits beside — and matches — the
-    actual TIFFs. Prefers the label file, then the raw file. This is resolved
-    silently in the backend (like shape / spacing) and is not reported.
-    """
-    raw, label = _locate_files(metadata)
-    return _stem_from_file(label) or _stem_from_file(raw)
-
-
 def _as_tuple(value):
     return tuple(value) if isinstance(value, (list, tuple)) else value
 

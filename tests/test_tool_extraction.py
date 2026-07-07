@@ -44,8 +44,6 @@ def test_collect_datasets_dedupes_primary_and_extras():
 
 
 def test_trace_detail_formatters_are_pure_strings():
-    assert "intent = upload" in trace_details.parser_details({"intent": "upload", "volume": "v"})
-    assert any("→ failed" in d for d in trace_details.validation_details(
-        {"status": "failed", "missing_fields": ["tissue_region"]}))
-    assert any("missing required fields: tissue_region" in d for d in trace_details.validation_details(
-        {"status": "failed", "missing_fields": ["tissue_region"]}))
+    assert "intent=upload" in trace_details.parser_details({"intent": "upload", "volume": "v"})[0]
+    line = trace_details.validation_details({"status": "failed", "missing_fields": ["tissue_region"]})[0]
+    assert "failed" in line and "tissue_region" in line

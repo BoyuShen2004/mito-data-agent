@@ -131,9 +131,9 @@ def test_record_agent_applies_file_over_prompt_and_logs_conflict():
     assert any("conflict resolved (file wins)" in d for d in trace_details)
 
 
-def test_sidecar_keyed_to_data_file_name_not_prompt_name():
-    """The record + sidecar are named after the on-disk file stem, not the prompt
-    name — silently (no conflict/warning), while `dataset` is preserved."""
+def test_record_keyed_to_dataset_name_not_file_name():
+    """The record + sidecar are named after the dataset name, NOT the on-disk file
+    stem — even though the data file (vol1) has a different name."""
     state = _base_state()
     state["schema_validation"] = {"success": True, "status": "passed"}
     state["merged_metadata"] = {}
@@ -141,8 +141,8 @@ def test_sidecar_keyed_to_data_file_name_not_prompt_name():
         "intent": "metadata_only_update",
         "datasets": [
             {
-                "volume": "FancyPromptName",   # deliberately different from the file
-                "dataset": "FancyPromptName",
+                "volume": "FancyDatasetName",   # deliberately different from the file
+                "dataset": "FancyDatasetName",
                 "raw_file_path": "../mito_data_agent_data/vol1_0000.tiff",
                 "label_file_path": "../mito_data_agent_data/vol1.tiff",
             }
@@ -151,12 +151,8 @@ def test_sidecar_keyed_to_data_file_name_not_prompt_name():
     out = metadata_record_agent(state)
     rec = out["metadata_record"]["volumes"][0]
 
-    assert rec["volume"] == "vol1"  # file stem, not "FancyPromptName"
-    assert rec["sidecar_path"].endswith("vol1.metadata.json")
-    assert rec["metadata"].get("dataset") == "FancyPromptName"  # dataset name preserved
-    # The rename is silent: not surfaced as a conflict or a warning.
-    assert not any("name" in c["message"].lower() for c in out.get("conflicts", []))
-    assert not out.get("warnings")
+    assert rec["volume"] == "FancyDatasetName"  # dataset name, NOT file stem "vol1"
+    assert rec["sidecar_path"].endswith("fancydatasetname.metadata.json")
 
 
 def test_report_shows_every_recorded_dataset():

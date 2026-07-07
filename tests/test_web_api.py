@@ -101,6 +101,27 @@ def test_run_and_records_roundtrip(client):
     assert client.get("/api/records/does-not-exist").status_code == 404
 
 
+def test_clear_endpoint(client, monkeypatch, tmp_path):
+    """POST /api/clear wipes outputs/ and returns removal counts."""
+    from mito_data_agent.utils import paths
+
+    outputs = tmp_path / "outputs"
+    monkeypatch.setattr(paths, "get_outputs_dir", lambda: outputs)
+    # Seed a couple of artifacts across output subdirs.
+    paths.ensure_output_dirs()
+    (outputs / "execution_reports" / "run1.json").write_text("{}")
+    (outputs / "hf_staging" / "vol1").mkdir(parents=True)
+
+    r = client.post("/api/clear")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["removed_files"] >= 1 and body["removed_dirs"] >= 1
+    # Structure is preserved (dirs + .gitkeep remain), artifacts are gone.
+    assert (outputs / "execution_reports").is_dir()
+    assert not (outputs / "execution_reports" / "run1.json").exists()
+    assert not (outputs / "hf_staging" / "vol1").exists()
+
+
 def test_settings_roundtrip(client):
     r = client.get("/api/settings")
     assert r.status_code == 200

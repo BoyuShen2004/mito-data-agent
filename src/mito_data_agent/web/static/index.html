@@ -213,6 +213,7 @@
     </div>
     <div class="spacer"></div>
     <span class="badge" id="backendBadge" title="Active LLM backend"><span class="dot"></span> …</span>
+    <button class="btn-ghost" id="clearBtn" title="Delete everything under outputs/ (reports, artifacts, ledger)">Clear outputs</button>
     <button class="icon-btn" id="settingsBtn" title="LLM settings">⚙️</button>
   </header>
 
@@ -542,6 +543,20 @@ e.g. Prepare vol1 for upload. Raw file is ../mito_data_agent_data/vol1_0000.tiff
       await api("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       overlay.classList.remove("open"); toast("Settings saved."); loadHealth();
     } catch (e) { toast("Save failed: " + e.message); }
+  };
+
+  /* ---------- clear outputs ---------- */
+  $("#clearBtn").onclick = async () => {
+    if (!confirm("Delete everything under outputs/ — execution reports, dry-run artifacts, and the recorded-metadata ledger?\n\nThis cannot be undone.")) return;
+    const btn = $("#clearBtn"); btn.disabled = true; const prev = btn.textContent; btn.textContent = "Clearing…";
+    try {
+      const r = await api("/api/clear", { method: "POST" });
+      toast(`Cleared ${r.removed_files} file(s), ${r.removed_dirs} folder(s).`);
+      _records = [];
+      if ($("#tab-records").style.display !== "none") renderRecords();
+      loadHealth();
+    } catch (e) { toast("Clear failed: " + e.message); }
+    finally { btn.disabled = false; btn.textContent = prev; }
   };
 
   /* ---------- keyboard ---------- */

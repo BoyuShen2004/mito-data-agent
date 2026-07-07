@@ -38,7 +38,12 @@ from mito_data_agent.llm.settings_store import (
 )
 from mito_data_agent.tools.metadata_store import get_record, get_store_path, list_records
 from mito_data_agent.tools.reporting import render_report_text
-from mito_data_agent.utils.paths import get_prompt_examples_dir, to_relative_path
+from mito_data_agent.utils.paths import (
+    clear_outputs,
+    get_outputs_dir,
+    get_prompt_examples_dir,
+    to_relative_path,
+)
 from mito_data_agent.utils.prompts import load_prompt_file
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -153,6 +158,18 @@ def record(volume: str) -> dict:
     if not rec:
         raise HTTPException(status_code=404, detail=f"No record for volume: {volume}")
     return rec
+
+
+@app.post("/api/clear")
+def clear() -> dict:
+    """Delete all generated artifacts + run history under outputs/ (keeps the
+    folder structure). This also clears the recorded-metadata ledger."""
+    stats = clear_outputs()
+    return {
+        "removed_files": stats["removed_files"],
+        "removed_dirs": stats["removed_dirs"],
+        "outputs_dir": to_relative_path(get_outputs_dir()),
+    }
 
 
 @app.get("/api/settings")

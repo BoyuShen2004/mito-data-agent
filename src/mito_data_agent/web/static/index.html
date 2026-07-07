@@ -57,23 +57,21 @@
     .brand h1 { font-size: 15px; margin: 0; font-weight: 650; }
     .brand p { margin: 0; font-size: 12px; color: var(--muted); }
     .spacer { flex: 1; }
-    .badge {
-      display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;
+    /* combined LLM-backend badge + settings button */
+    .badge-btn {
+      display: inline-flex; align-items: center; gap: 7px; padding: 5px 11px;
       border-radius: 999px; font-size: 12px; font-weight: 550; background: var(--surface-2);
-      border: 1px solid var(--border); color: var(--muted);
+      border: 1px solid var(--border); color: var(--muted); cursor: pointer;
+      transition: border-color .12s, color .12s, background .12s;
     }
-    .badge .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+    .badge-btn:hover { border-color: var(--accent); color: var(--text); }
+    .badge-btn .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+    .badge-btn .gear { font-size: 13px; opacity: .75; margin-left: 1px; }
     .seg { display: flex; background: var(--surface-2); border: 1px solid var(--border);
       border-radius: 999px; padding: 3px; }
     .seg button { border: none; background: none; padding: 5px 14px; font-size: 13px; font-weight: 550;
       color: var(--muted); border-radius: 999px; }
     .seg button.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
-    .icon-btn {
-      width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--border);
-      background: var(--surface); color: var(--text); font-size: 16px; display: grid;
-      place-items: center; transition: background .12s;
-    }
-    .icon-btn:hover { background: var(--surface-2); }
     .btn-ghost { background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
       border-radius: 8px; padding: 7px 12px; font-size: 12.5px; font-weight: 550; }
     .btn-ghost:hover { border-color: var(--accent); }
@@ -300,9 +298,10 @@
     <label class="switch" title="Show the supervisor + agent + component trace under each answer">
       <input type="checkbox" id="traceToggle" /><span class="track"></span> Agent trace
     </label>
-    <span class="badge" id="backendBadge" title="Active LLM backend"><span class="dot"></span> …</span>
     <button class="btn-ghost" id="clearBtn" title="Delete everything under outputs/ (reports, artifacts, ledger)">Clear outputs</button>
-    <button class="icon-btn" id="settingsBtn" title="LLM settings">⚙️</button>
+    <button class="badge-btn" id="settingsBtn" title="Active LLM backend — click to change">
+      <span class="dot" id="backendDot"></span><span id="backendLabel">…</span><span class="gear">⚙️</span>
+    </button>
   </header>
 
   <main>
@@ -418,8 +417,12 @@
   async function loadHealth() {
     try {
       const h = await api("/api/health");
-      $("#backendBadge").innerHTML = `<span class="dot"></span> ${esc(h.llm_backend)} · ${esc(h.llm_model)}`;
-    } catch (e) { $("#backendBadge").innerHTML = `<span class="dot" style="background:var(--err)"></span> offline`; }
+      $("#backendLabel").textContent = `${h.llm_backend} · ${h.llm_model}`;
+      $("#backendDot").style.background = "var(--ok)";
+    } catch (e) {
+      $("#backendLabel").textContent = "offline";
+      $("#backendDot").style.background = "var(--err)";
+    }
   }
   async function loadExamples() {
     try {

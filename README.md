@@ -1,30 +1,80 @@
 # Mito Data Agent
 
-A **LLM-powered** LangGraph agent for prompt-driven annotated mitochondria volume upload preparation.
+A **supervisor-based multi-agent LangGraph** system for prompt-driven MitoVerse
+dataset metadata recording and upload preparation.
 
-## What this project is
+## What it is
 
-**Mito Data Agent** is an AI agent that uses an **LLM to understand free-form annotator prompts**, then runs a LangGraph workflow to inspect files, validate metadata, and prepare dry-run artifacts for Hugging Face staging and MitoVerse table updates.
+You describe your annotated mitochondria volume(s) in a free-form prompt. An
+**LLM parses** the prompt, an **LLM supervisor** routes the work step by step, and
+a set of specialized agents inspect the files, reconcile metadata against what the
+files actually contain, record everything to a queryable store, and prepare
+dry-run artifacts for Hugging Face / MitoVerse.
 
-**LLM is required** for prompt parsing (`REQUIRE_LLM_FOR_PROMPT_PARSING=True`). Rule-based parsing exists only as an optional fallback.
+It is **fully agentic**: both prompt understanding and routing are LLM-driven —
+there is no rule-based fallback in the product.
 
-## What this project does
+> **All external writes are pseudo / dry-run.** No real Hugging Face upload or
+> GitHub push happens (`real_write_performed=False`). Local writes are limited to
+> `outputs/` and per-volume metadata sidecars in your data directory.
 
-- **LLM parses free-form natural language** into structured MitoVerse metadata (no Key: value required)
-- LangGraph orchestrates inspect → observe → merge → validate → generate artifacts
-- Python tools read TIFF files and extract **Shape** and **# Mito** (LLM does not fabricate these)
-- Generates Hugging Face staging and MitoVerse update files (dry-run)
-- Pseudo upload/push simulation with full execution reports
+## Architecture
 
-## What this project does not do
+```
+START
+  ↓
+supervisor_agent  ← ─────────────────────────┐
+  ↓ (LLM decides the next agent each turn)    │
+  ├── input_parser_agent  ────────────────────┤
+  ├── dataset_inspector_agent  ───────────────┤
+  ├── observation_agent  ─────────────────────┤
+  ├── metadata_agent  ────────────────────────┤
+  ├── validation_agent  ──────────────────────┤
+  ├── metadata_record_agent  ─────────────────┤
+  ├── staging_agent  ─────────────────────────┤
+  ├── upload_planning_agent  ─────────────────┤
+  ├── website_update_agent  ──────────────────┤
+  ├── inventory_agent  ───────────────────────┤
+  ├── catalog_agent  ─────────────────────────┤
+  ├── storage_info_agent  ────────────────────┤
+  ├── report_agent  ──────────────────────────┘
+  └── finish → END
+```
 
-- No real Hugging Face upload
-- No real GitHub push
-- No real MitoVerse website update
-- No dataset search
-- No external downloads
-- No model training
-- No segmentation inference
+- **`START` → `supervisor_agent`** is the only entry point. Every agent is
+  dispatched by the supervisor and returns to it, so all work flows through one
+  uniform loop.
+- **Supervisor = LLM** (`agents/supervisor_llm.py`). Each turn it gets the user
+  request, the agent catalog, and a progress snapshot, and returns
+  `{next_agent, reason, confidence}`. On an LLM outage/timeout a safety net keeps
+  the run from crashing (retries, then advances by data dependency).
+- **Agents are thin flow.** All output *formatting* lives in tools
+  (`tools/reporting.py`), not in the agent modules.
+- **Trace channels.** Every worker appends to `agent_trace`; every routing
+  decision appends to `supervisor_decisions`.
+
+### Design conventions
+
+- Agent modules (`agents/`) contain **flow only** — no hardcoded output formats.
+- Anything that formats, parses, reads files, or renders lives in **`tools/`**
+  (e.g. `tools/reporting.py` owns the report text, JSON, CLI summary).
+- All paths are config/helper-driven (`config.DEFAULT_DATA_DIR`,
+  `utils/paths.py`); no machine-specific absolute paths.
+
+## What the agent does
+
+- **Parses free-form prompts** into structured metadata (LLM), including
+  **multiple datasets in one prompt** (each recorded separately).
+- **File info wins over the prompt.** When the prompt and the actual TIFF disagree
+  on shape / # Mito / resolution, the file value is used and the conflict is
+  logged.
+- **Records metadata** to a persistent, queryable ledger
+  (`outputs/metadata_store/records.json`) **and** a sidecar next to the data
+  (`<data_dir>/<volume>.metadata.json`).
+- **Answers "where do you keep things?"** and **"what have I recorded?"**
+- **Prepares dry-run artifacts**: HF staging, MitoVerse update rows, pseudo
+  upload/push plans.
+- **Looks up** whether a volume already exists in the public MitoVerse catalog.
 
 ## Install
 
@@ -33,228 +83,129 @@ cd mito_data_agent
 pip install -e ".[dev]"
 ```
 
-## CLI commands
+## LLM setup (required)
 
-Entry point (all subcommands):
+The agent needs an LLM backend for parsing and routing.
 
+**OpenAI (recommended — fast, reliable):**
 ```bash
-python -m mito_data_agent <command> [options]
+export OPENAI_API_KEY=sk-...
+export MITO_AGENT_LLM_BACKEND=openai
+export MITO_AGENT_LLM_MODEL=gpt-4.1
 ```
 
-After `pip install -e .`, these console scripts are also available: `mito-agent`, `mito-web`, `mito-clear`.
+**Codex CLI (local, no API key):**
+```bash
+codex login
+export MITO_AGENT_LLM_BACKEND=codex_cli
+```
+> Note: Codex makes one CLI call per routing step, so multi-step runs are slow;
+> OpenAI is much faster.
+
+## CLI
+
+Everything runs through `python -m mito_data_agent <command>`.
 
 | Command | Description |
 |---------|-------------|
-| `agent` | Run the ReAct LangGraph agent from the terminal |
-| `web` | Start the chat web UI (FastAPI + browser) |
+| `run` | Run the multi-agent workflow on a prompt |
+| `records` | Query the recorded-metadata store |
 | `clear` | Delete generated artifacts under `outputs/` |
 
-Show top-level help:
+### `run`
 
 ```bash
-python -m mito_data_agent --help
-```
+# Inline prompt, with the supervisor/agent trace
+python -m mito_data_agent run --prompt "Record metadata for vol1 ..." --trace
 
-### `agent` — run from the CLI
-
-```bash
-# Prompt from a file (examples/ has .md templates)
-python -m mito_data_agent agent --prompt-file examples/upload_prompt.md
-
-# Inline prompt
-python -m mito_data_agent agent --prompt "List my local annotated volumes"
-
-# Print LangGraph node-by-node trace
-python -m mito_data_agent agent --prompt-file examples/freeform_upload_prompt.md --trace
-
-# LLM backend / model
-python -m mito_data_agent agent --llm-backend openai --model gpt-4.1 --prompt "..."
-python -m mito_data_agent agent --llm-backend codex_cli --prompt-file examples/freeform_upload_prompt.md
-
-# Clear outputs first, then run (or clear only with no prompt)
-python -m mito_data_agent agent --clear-outputs -y
-python -m mito_data_agent agent --clear-outputs -y --prompt-file examples/upload_prompt.md
-
-# Optional rule-based parser fallback if LLM fails (not recommended)
-python -m mito_data_agent agent --allow-rule-based-fallback --prompt-file examples/upload_prompt.md
+# From a file
+python -m mito_data_agent run --prompt-file prompts/examples/upload_prompt.md
 ```
 
 | Flag | Purpose |
 |------|---------|
-| `--prompt TEXT` | User prompt string |
-| `--prompt-file PATH` | Read prompt from file |
-| `--trace` | Print LangGraph step trace to the terminal |
-| `--llm-backend {openai,codex_cli}` | LLM backend (default from config / env) |
-| `--model NAME` | OpenAI model name |
-| `--allow-rule-based-fallback` | Use rule-based parser if LLM unavailable |
-| `--clear-outputs` | Wipe `outputs/` then exit (or continue if a prompt is given) |
-| `-y`, `--yes` | Skip confirmation for `--clear-outputs` |
+| `--prompt TEXT` / `--prompt-file PATH` | The user request |
+| `--trace` | Print the supervisor/agent trace |
+| `--llm-backend {openai,codex_cli}` / `--model NAME` | Override the LLM backend/model |
+| `--clear-outputs` / `-y` | Wipe `outputs/` first |
 
-### `web` — chat UI
+The CLI summary lists **every** recorded dataset (not just the first), and each
+run writes `outputs/execution_reports/<run_id>.json`.
 
-```bash
-python -m mito_data_agent web
-# Open http://127.0.0.1:7860
-
-python -m mito_data_agent web --host 0.0.0.0 --port 8080
-python -m mito_data_agent web --clear-outputs -y    # fresh outputs before start
-python -m mito_data_agent web --trace               # enable trace for all chat runs
-python -m mito_data_agent web --no-auto-port        # fail if default port is busy
-```
-
-| Flag | Purpose |
-|------|---------|
-| `--host HOST` | Bind address (default: `127.0.0.1`) |
-| `--port PORT` | Port (default: `7860`; auto-increments if busy unless `--no-auto-port`) |
-| `--clear-outputs` | Wipe `outputs/` before starting the server |
-| `-y`, `--yes` | Skip confirmation for `--clear-outputs` |
-| `--trace` | Set `MITO_AGENT_TRACE=1` for streaming step traces in the UI |
-| `--no-auto-port` | Do not try the next port when the requested one is in use |
-
-LLM connection (OpenAI / Codex) is configured in the web UI sidebar; settings are stored under `outputs/logs/llm_connection.json`.
-
-### `clear` — reset run artifacts
+### `records` — query the metadata store
 
 ```bash
-python -m mito_data_agent clear          # interactive confirm
-python -m mito_data_agent clear -y       # no prompt
+python -m mito_data_agent records                  # list all recorded volumes
+python -m mito_data_agent records --volume vol1     # one record (+ version history)
+python -m mito_data_agent records --organism Human  # filter by a metadata field
+python -m mito_data_agent records --json            # raw JSON
 ```
 
-Removes everything under `outputs/` except subdirectory `.gitkeep` files (`hf_staging/`, `mitoverse_updates/`, `execution_reports/`, `logs/`, `cache/`).
+Programmatic access:
+```python
+from mito_data_agent.tools.metadata_store import get_record, query_records
+get_record("vol1")
+query_records(organism="Human", modality="FIB-SEM")
+```
 
-## Web chat UI
-
-A simple OpenClaw-style chat interface is included. Type your prompt in the conversation panel and the agent runs the same LangGraph workflow (dry-run only).
+### `clear`
 
 ```bash
-python -m mito_data_agent web
-# Open http://127.0.0.1:7860
+python -m mito_data_agent clear -y   # wipe outputs/ (keeps folder structure)
 ```
 
-## Folder structure
+## Project layout
 
 ```
 mito_data_agent/
-  README.md
-  pyproject.toml            # package config + console scripts
-  requirements.txt          # legacy; prefer pip install -e .
-
-  examples/                 # Example user prompts (.md)
-  outputs/                  # Generated at runtime (gitignored except .gitkeep)
-  tests/
-
-  src/mito_data_agent/      # All application code lives here
-    __main__.py             # python -m mito_data_agent <command>
-    cli/                    # Command-line entry points (agent, web, clear)
-    web/                    # FastAPI server + chat UI static files
-    graph.py                # LangGraph workflow
-    nodes.py                # Thin node wrappers
-    state.py                # Shared graph state
-    schemas.py              # Pydantic models
-    config.py               # Safety flags and constants
-    runner.py               # Shared agent runner (CLI + web)
-    llm/                    # LLM client + prompt templates
-    prompts/                # System prompts (.md)
-    tools/
-      parse_prompt_llm.py   # LLM-first parser
-      parse_prompt_fallback.py  # Optional fallback only
-    utils/                  # Helpers (paths, prompts, io, …)
+  pyproject.toml
+  prompts/
+    system/parse_user_request.md     # LLM system prompt (parsing)
+    examples/*.md                    # example user prompts
+  outputs/                           # generated at runtime (gitignored)
+    execution_reports/  metadata_store/  hf_staging/  mitoverse_updates/  logs/  cache/
+  src/mito_data_agent/
+    __main__.py                      # python -m mito_data_agent <command>
+    cli/                             # run, records, clear
+    agents/                          # the multi-agent workflow (FLOW only)
+      supervisor_llm.py              #   LLM router
+      supervisor_agent.py            #   supervisor node + safety net
+      *_agent.py                     #   worker agents (wrap tools)
+      graph.py / state.py / registry.py
+    tools/                           # all real work + formatting
+      reporting.py                   #   report text / JSON / CLI summary
+      metadata_store.py              #   persistent ledger + data-dir sidecars
+      reconcile_metadata.py          #   file-wins-over-prompt reconciliation
+      parse_prompt*.py, inspect_files.py, merge_metadata.py, validate_metadata.py,
+      generate_*.py, pseudo_*.py, *_mitoverse_*.py, list_local_data.py
+    llm/                             # LLM client + prompt templates + settings
+    tasks/                           # intent taxonomy for the parser
+    schemas.py, config.py, utils/
 ```
 
-## LangGraph flow
+## Metadata recording
 
-```
-User prompt
-  ↓
-validate_input
-  ↓
-parse_user_prompt
-  ↓
-route_intent
-  ├── upload_annotation → inspect → extract observations → merge → validate
-  │       ├── valid → HF staging → MitoVerse update → pseudo HF → pseudo GitHub → report
-  │       └── missing → missing-fields report
-  ├── metadata_only_update → merge → validate
-  │       ├── valid → MitoVerse update → pseudo GitHub → report
-  │       └── missing → missing-fields report
-  ├── check_upload_readiness → inspect → extract → merge → validate → readiness report
-  └── unsupported_request → unsupported report
-```
+Every run that produces metadata records it in two places:
 
-## Important state objects
+1. **Ledger** — `outputs/metadata_store/records.json` (accumulates across runs,
+   keeps a version history per volume; query with `records`).
+2. **Sidecar** — `<data_dir>/<volume>.metadata.json` next to the raw/label TIFFs
+   (`data_dir` = `config.DEFAULT_DATA_DIR`, default `../mito_data_agent_data`,
+   override with `MITO_AGENT_DATA_DIR`).
 
-| State field | Purpose |
-|---|---|
-| `parsed_request` | Structured fields extracted from the user prompt |
-| `file_inspection` | Low-level file existence and shape checks |
-| `volume_observation` | Extracted Resolution, Shape, and # Mito from files |
-| `merged_metadata` | Combined prompt + observations before validation |
-| `schema_validation` | Whether required MitoVerse columns are satisfied |
-| `hf_upload_plan` | Pseudo HF upload dry-run plan |
-| `github_push_plan` | Pseudo GitHub push dry-run plan |
-
-## Why `volume_observation` matters
-
-The three file-derived MitoVerse columns should come from actual data when possible:
-
-- **Shape (x,y,z)** — from raw/label TIFF array dimensions (label preferred on conflict)
-- **# Mito** — count of unique non-zero labels in the mask file
-- **Resolution (nm)** — from a JSON metadata file (`resolution_nm` or `voxel_size_nm`), else from the prompt
-
-File-derived values override prompt values during merge.
-
-## Data directory
-
-Annotated volumes live in **`../mito_data_agent_data`** (sibling to this repo; override with `MITO_AGENT_DATA_DIR` or see `DEFAULT_DATA_DIR` in `config.py`):
-
-- Raw: `vol1_0000.tiff`
-- Label: `vol1.tiff`
-
-Example prompts in `examples/` reference these paths.
-
-## LLM setup (required)
-
-### Option A: OpenAI API
-
-```bash
-export OPENAI_API_KEY=sk-...
-export MITO_AGENT_LLM_MODEL=gpt-4.1   # or gpt-5.5 if available in your environment
-
-pip install -e ".[dev]"
-python -m mito_data_agent agent --prompt-file examples/freeform_upload_prompt.md --trace
-```
-
-### Option B: Codex CLI
-
-```bash
-codex login
-export USE_CODEX_CLI=true
-export MITO_AGENT_LLM_BACKEND=codex_cli
-
-python -m mito_data_agent agent --prompt-file examples/freeform_upload_prompt.md --trace
-```
-
-### Optional fallback (not recommended)
-
-```bash
-python -m mito_data_agent agent --allow-rule-based-fallback --prompt-file examples/upload_prompt.md
-```
-
-If no LLM is configured and fallback is disabled, the agent fails with:
-`No LLM backend available. This MVP requires LLM prompt parsing.`
+Multiple datasets in one prompt are all recorded. File-derived values override
+conflicting prompt values (with a warning).
 
 ## Expected outputs
 
-After a successful upload run (written under `outputs/`, not committed to git):
+- `outputs/metadata_store/records.json` — the queryable ledger
+- `<data_dir>/<volume>.metadata.json` — per-volume sidecars
+- `outputs/execution_reports/<run_id>.json` — full run record (trace + report)
+- `outputs/hf_staging/<volume>/…`, `outputs/mitoverse_updates/<volume>_row.{json,csv}` — dry-run artifacts
 
-- `outputs/hf_staging/<volume>/metadata.json`
-- `outputs/hf_staging/<volume>/manifest.json`
-- `outputs/hf_staging/<volume>/README.md`
-- `outputs/mitoverse_updates/<volume>_row.json`
-- `outputs/mitoverse_updates/<volume>_row.csv`
-- `outputs/mitoverse_updates/<volume>_site_update_patch.md`
-- `outputs/execution_reports/<run_id>.json`
+## Dry-run only
 
-## External writes (stub tools)
-
-Upload/push tools (`pseudo_upload_hf`, `pseudo_push_github`) are **stub implementations**: they validate inputs and return a plan with `real_write_performed=false`. They do not call Hugging Face or GitHub APIs. When the agent is stable, swap these modules for real implementations (see `ALLOW_REAL_*` flags in `config.py`).
+The HF/GitHub tools (`tools/pseudo_upload_hf.py`, `tools/pseudo_push_github.py`)
+validate inputs and return a plan with `real_write_performed=false`. They do not
+call any external API. Swap them for real implementations when ready (see
+`ALLOW_REAL_*` flags in `config.py`).

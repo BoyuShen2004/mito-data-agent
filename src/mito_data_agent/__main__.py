@@ -4,26 +4,26 @@ from __future__ import annotations
 
 import sys
 
-from mito_data_agent.cli import agent, clear, web
+from mito_data_agent.cli import clear, records, run
 
 COMMANDS = {
-    "agent": agent.main,
-    "web": web.main,
+    "run": run.main,
+    "records": records.main,
     "clear": clear.main,
 }
 
 USAGE = """\
-Mito Data Agent — LangGraph agent for MitoVerse upload preparation
+Mito Data Agent — supervisor-based multi-agent workflow for MitoVerse metadata
 
 Usage:
-  python -m mito_data_agent agent --prompt-file examples/upload_prompt.md
-  python -m mito_data_agent web
+  python -m mito_data_agent run --prompt-file prompts/examples/upload_prompt.md --trace
+  python -m mito_data_agent records --volume vol1
   python -m mito_data_agent clear -y
 
 Commands:
-  agent   Run the LangGraph agent (CLI)
-  web     Start the chat web UI
-  clear   Delete all outputs/ and run history
+  run      Run the supervisor-based multi-agent workflow (CLI, --trace)
+  records  Query the recorded-metadata store
+  clear    Delete all outputs/ and run history
 """
 
 

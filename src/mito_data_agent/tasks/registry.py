@@ -1,15 +1,9 @@
-"""Task registry — add new agent capabilities by registering a TaskSpec.
+"""Task registry — the intent taxonomy the LLM prompt parser classifies into.
 
-How to add a task
------------------
-1. Implement node function(s) in ``nodes.py`` (thin wrappers around tools).
-2. Register a :class:`TaskSpec` in ``tasks/builtin.py`` (or a new module imported at startup).
-3. Wire any new graph edges in :func:`tasks.graph_edges.register_graph_edges` only if the
-   task needs a non-linear subgraph (e.g. HF staging chain). Linear tails can use
-   ``terminal_edges`` on the spec.
-4. Optional: add a ``format_result`` hook for custom chat output in the runner.
-
-The LangGraph shell stays stable: validate → parse → *task entry* → … → report.
+Each registered :class:`TaskSpec` (see ``tasks/builtin.py``) contributes its
+``intent``, ``description``, and ``examples`` to the parser's system prompt (via
+``build_intent_prompt_section``). Routing itself is decided by the LLM supervisor
+at run time — the registry only defines the vocabulary of intents.
 """
 
 from __future__ import annotations

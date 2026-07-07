@@ -74,8 +74,9 @@ def test_local_stub_result():
     assert obs["signal"] == "ok"
 
 
-def test_execute_generate_hf_staging_stub_signal(tmp_path, monkeypatch):
-    from mito_data_agent.agent.tools import execute_tool
+def test_generate_hf_staging_writes_files(tmp_path, monkeypatch):
+    """The HF staging tool writes the expected artifacts under outputs/."""
+    from mito_data_agent.tools.generate_hf_staging import generate_hf_staging_files
 
     merged = {
         "volume": "test_vol",
@@ -92,21 +93,7 @@ def test_execute_generate_hf_staging_stub_signal(tmp_path, monkeypatch):
         "mito_data_agent.tools.generate_hf_staging.get_outputs_dir",
         lambda: tmp_path,
     )
-    monkeypatch.setattr(
-        "mito_data_agent.tools.generate_mitoverse_update.get_outputs_dir",
-        lambda: tmp_path,
-    )
-
-    obs_json, updates = execute_tool(
-        "generate_hf_staging",
-        {},
-        run_id="run_test",
-        artifacts={"merged_metadata": merged},
-    )
-    import json
-
-    obs = json.loads(obs_json)
-    assert obs["observation"] == "stub_tool_result"
-    assert obs["signal"] == "ok"
-    assert updates["generate_hf_staging_plan"]["mode"] == "local"
-    assert updates["generate_hf_staging_plan"]["executed"] is True
+    staging_dir = generate_hf_staging_files(merged, "run_test")
+    assert staging_dir
+    assert list(tmp_path.rglob("metadata.json"))
+    assert list(tmp_path.rglob("manifest.json"))

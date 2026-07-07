@@ -6,7 +6,7 @@ import re
 import shutil
 from pathlib import Path
 
-OUTPUT_SUBDIRS = ("hf_staging", "mitoverse_updates", "execution_reports", "logs", "cache")
+OUTPUT_SUBDIRS = ("hf_staging", "mitoverse_updates", "execution_reports", "metadata_store", "logs", "cache")
 
 
 def get_project_root() -> Path:
@@ -61,9 +61,9 @@ def get_outputs_dir() -> Path:
     return get_project_root() / "outputs"
 
 
-def get_examples_dir() -> Path:
-    """Return the examples/ directory."""
-    return get_project_root() / "examples"
+def get_prompt_examples_dir() -> Path:
+    """Return the example-prompts directory (prompts/examples/)."""
+    return get_project_root() / "prompts" / "examples"
 
 
 def ensure_output_dirs() -> None:

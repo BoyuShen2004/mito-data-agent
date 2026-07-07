@@ -27,9 +27,8 @@ MITOVERSE_EXPLORER_URL = "https://pytorchconnectomics.github.io/mitoverse/"
 
 DEFAULT_DATA_DIR = os.getenv("MITO_AGENT_DATA_DIR", "../mito_data_agent_data")
 
-REQUIRE_LLM_FOR_PROMPT_PARSING = True
-ALLOW_RULE_BASED_FALLBACK = os.getenv("ALLOW_RULE_BASED_FALLBACK", "false").lower() == "true"
-
+# This is an agentic system: prompt parsing and routing are LLM-driven, with no
+# rule-based fallback. An LLM backend must be configured.
 LLM_BACKEND = os.getenv("MITO_AGENT_LLM_BACKEND", "openai")
 LLM_MODEL = os.getenv("MITO_AGENT_LLM_MODEL", "gpt-5.5")
 USE_CODEX_CLI = os.getenv("USE_CODEX_CLI", "false").lower() == "true"
@@ -60,12 +59,11 @@ def apply_runtime_config(
     llm_backend: str | None = None,
     llm_model: str | None = None,
     use_codex_cli: bool | None = None,
-    allow_rule_based_fallback: bool | None = None,
     openai_api_key: str | None = None,
     codex_path: str | None = None,
 ) -> None:
     """Override LLM settings from CLI flags (mutates module-level config)."""
-    global LLM_BACKEND, LLM_MODEL, USE_CODEX_CLI, ALLOW_RULE_BASED_FALLBACK
+    global LLM_BACKEND, LLM_MODEL, USE_CODEX_CLI
 
     if llm_backend is not None:
         LLM_BACKEND = llm_backend
@@ -75,8 +73,6 @@ def apply_runtime_config(
         USE_CODEX_CLI = use_codex_cli
         if use_codex_cli:
             LLM_BACKEND = "codex_cli"
-    if allow_rule_based_fallback is not None:
-        ALLOW_RULE_BASED_FALLBACK = allow_rule_based_fallback
     if openai_api_key is not None:
         global _RUNTIME_OPENAI_API_KEY
         _RUNTIME_OPENAI_API_KEY = openai_api_key

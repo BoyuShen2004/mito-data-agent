@@ -111,15 +111,15 @@ def test_list_datasets(sample_catalog):
     assert ids == {"openorganelle", "guay21"}
 
 
-def test_agent_lookup_tool(sample_catalog):
-    from mito_data_agent.agent.tools import execute_tool
+def test_catalog_agent_lookup(sample_catalog):
+    """The catalog agent wraps the lookup tool and writes mitoverse_lookup to state."""
+    from mito_data_agent.agents.catalog_agent import catalog_agent
 
-    obs_json, updates = execute_tool(
-        "lookup_mitoverse_volume",
-        {"volume": "jrc_mus-liver_recon-1_test0"},
-        run_id="run_test",
-        artifacts={},
-    )
-    obs = json.loads(obs_json)
-    assert obs["found"] is True
-    assert updates["mitoverse_lookup"]["found"] is True
+    state = {
+        "run_id": "run_test",
+        "agent_trace": [],
+        "step": 0,
+        "parsed_request": {"volume": "jrc_mus-liver_recon-1_test0"},
+    }
+    out = catalog_agent(state)
+    assert out["mitoverse_lookup"]["found"] is True

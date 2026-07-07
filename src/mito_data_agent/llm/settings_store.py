@@ -19,7 +19,6 @@ class LLMConnectionSettings(BaseModel):
     llm_model: str = "gpt-4.1"
     openai_api_key: Optional[str] = None
     codex_path: Optional[str] = None
-    allow_rule_based_fallback: bool = False
     last_test_success: Optional[bool] = None
     last_test_message: Optional[str] = None
 
@@ -74,7 +73,6 @@ def apply_settings_to_config(settings: LLMConnectionSettings | None = None) -> L
     config.LLM_BACKEND = s.llm_backend
     config.LLM_MODEL = s.llm_model
     config.USE_CODEX_CLI = s.llm_backend == "codex_cli"
-    config.ALLOW_RULE_BASED_FALLBACK = s.allow_rule_based_fallback
     config._RUNTIME_OPENAI_API_KEY = s.openai_api_key  # type: ignore[attr-defined]
     config._RUNTIME_CODEX_PATH = s.codex_path  # type: ignore[attr-defined]
     return s

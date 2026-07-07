@@ -1,4 +1,0 @@
-[console_scripts]
-mito-agent = mito_data_agent.cli.agent:main
-mito-clear = mito_data_agent.cli.clear:main
-mito-web = mito_data_agent.cli.web:main

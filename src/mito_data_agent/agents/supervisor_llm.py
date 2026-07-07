@@ -1,0 +1,124 @@
+"""LLM-driven supervisor: the router *reasons* about the next agent.
+
+There are no hardcoded routes or keyword rules. On each turn the supervisor
+hands the LLM the user's request, the agent catalog, and a snapshot of what has
+been done so far, and asks it to pick the single next agent (or ``finish``).
+
+Testing: the LLM call is isolated behind :func:`get_supervisor_model`. Tests
+monkeypatch that to a scripted model so the graph is deterministic offline, while
+the production ``LLMSupervisor`` code (context building, JSON parsing, allow-list
+enforcement) still runs.
+"""
+
+from __future__ import annotations
+
+import json
+from typing import Any
+
+from mito_data_agent.agents.registry import AGENT_CATALOG, progress_snapshot
+from mito_data_agent.agents.state import ALLOWED_NEXT_AGENTS, MultiAgentState
+
+_SYSTEM_PROMPT = """\
+You are the SUPERVISOR of a multi-agent workflow that prepares annotated \
+mitochondria volumes for MitoVerse upload. You do not do task work yourself — \
+you only decide which specialist agent runs next.
+
+On each turn you are given:
+- the user's request,
+- the catalog of available agents,
+- a progress snapshot (which work products already exist).
+
+Choose exactly one `next_agent` from the allowed list, or `finish` when the \
+user's request has been satisfied and the final report has been written.
+
+Guidelines:
+- `input_parser_agent` must run before anything else needs the parsed request.
+- Only run the agents the user's request actually needs. A "what data do I have" \
+request needs `inventory_agent`; a "is X already in MitoVerse" request needs \
+`catalog_agent`; a "where do you keep / store the metadata" or "what have you \
+recorded" request needs `storage_info_agent`; an upload request needs the file → \
+metadata → validation → record → staging → upload → website chain.
+- When the user provides metadata for MULTIPLE datasets in one prompt, still run \
+the normal metadata → validation → record path once — `metadata_record_agent` saves \
+every dataset the parser found, so you do not loop per dataset.
+- Whenever metadata was produced, run `metadata_record_agent` (after validation) \
+to save the record to the local store, even if validation failed.
+- If validation failed, do not stage or upload — record the metadata, then go to \
+`report_agent`.
+- Run `report_agent` once, near the end, then `finish`.
+- Never pick an agent whose work product already exists (avoid loops).
+
+Respond with ONLY a JSON object:
+{"next_agent": "<agent or finish>", "reason": "<one sentence>", "confidence": "low|medium|high"}
+"""
+
+
+def _build_context(state: MultiAgentState) -> dict[str, Any]:
+    """Assemble the factual context the supervisor reasons over."""
+    parsed = state.get("parsed_request") or {}
+    validation = state.get("schema_validation") or {}
+    return {
+        "user_prompt": state.get("user_prompt", ""),
+        "parsed_intent": parsed.get("intent"),
+        "progress": progress_snapshot(state),
+        "validation_status": validation.get("status"),
+        "allowed": ALLOWED_NEXT_AGENTS,
+        "agents": AGENT_CATALOG,
+    }
+
+
+def _build_user_prompt(context: dict[str, Any]) -> str:
+    """Render the routing context into a user prompt string for the LLM."""
+    catalog = "\n".join(f"- {name}: {desc}" for name, desc in context["agents"].items())
+    return (
+        f"User request:\n{context['user_prompt']}\n\n"
+        f"Parsed intent: {context['parsed_intent']}\n"
+        f"Validation status: {context['validation_status']}\n\n"
+        f"Available agents:\n{catalog}\n\n"
+        f"Allowed next_agent values: {context['allowed']}\n\n"
+        f"Progress so far (true = already done):\n"
+        f"{json.dumps(context['progress'], indent=2)}\n\n"
+        "Pick the next agent."
+    )
+
+
+class SupervisorModel:
+    """Production supervisor model — calls the configured LLM backend for a JSON
+    routing decision (same OpenAI / Codex CLI plumbing as prompt parsing)."""
+
+    def route(self, context: dict[str, Any]) -> dict[str, Any]:
+        from mito_data_agent.llm.llm_client import get_llm_client
+
+        user_prompt = _build_user_prompt(context)
+        last_exc: Exception | None = None
+        for _attempt in range(2):  # one retry for transient LLM slowness/timeouts
+            try:
+                return get_llm_client().complete_json(_SYSTEM_PROMPT, user_prompt)
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+        raise last_exc  # type: ignore[misc]
+
+
+_default_model: SupervisorModel | None = None
+
+
+def get_supervisor_model() -> SupervisorModel:
+    """Return the supervisor LLM model (monkeypatched in tests)."""
+    global _default_model
+    if _default_model is None:
+        _default_model = SupervisorModel()
+    return _default_model
+
+
+class LLMSupervisor:
+    """Supervisor policy that delegates routing to the LLM."""
+
+    def decide(self, state: MultiAgentState) -> dict:
+        context = _build_context(state)
+        # Looked up via the module global so tests can monkeypatch the model.
+        decision = get_supervisor_model().route(context)
+        return {
+            "next_agent": decision.get("next_agent", "finish"),
+            "reason": decision.get("reason", ""),
+            "confidence": decision.get("confidence", "medium"),
+        }

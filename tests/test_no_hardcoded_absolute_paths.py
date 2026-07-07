@@ -7,7 +7,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-SCAN_ROOTS = ("src/mito_data_agent", "tests", "examples", "prompts")
+SCAN_ROOTS = ("src/mito_data_agent", "tests", "prompts")
 SCAN_SUFFIXES = {".py", ".md", ".html", ".toml"}
 SKIP_PARTS = {".egg-info", "__pycache__", ".pytest_cache"}
 

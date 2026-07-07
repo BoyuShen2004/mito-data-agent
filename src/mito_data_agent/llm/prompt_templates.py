@@ -11,7 +11,7 @@ _PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
 
 def get_system_prompt() -> str:
     """Load the system prompt for structured user-request parsing."""
-    path = _PROMPTS_DIR / "parse_user_request_system.md"
+    path = _PROMPTS_DIR / "system" / "parse_user_request.md"
     if path.exists():
         base = path.read_text(encoding="utf-8").strip()
     else:

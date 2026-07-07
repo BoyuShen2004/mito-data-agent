@@ -33,6 +33,65 @@ class LLMClient:
             raise RuntimeError(f"Unsupported LLM backend: {backend}")
         return self._postprocess(parsed)
 
+    def complete_json(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
+        """Return a JSON object from the LLM given system + user prompts.
+
+        Used by the LLM supervisor for routing decisions. Reuses the same backend
+        resolution (OpenAI / Codex CLI), API key, and model as prompt parsing.
+        """
+        apply_settings_to_config(load_settings())
+        backend = self._resolve_backend()
+        if backend == "openai":
+            return self._complete_openai_json(system_prompt, user_prompt)
+        if backend == "codex_cli":
+            return self._complete_codex_json(system_prompt, user_prompt)
+        raise RuntimeError(f"Unsupported LLM backend: {backend}")
+
+    def _complete_openai_json(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
+        try:
+            from openai import OpenAI
+        except ImportError as exc:
+            raise RuntimeError(
+                "openai package is required for OpenAI LLM backend. pip install openai"
+            ) from exc
+
+        settings = load_settings()
+        client = OpenAI(api_key=self._get_openai_api_key())
+        completion = client.chat.completions.create(
+            model=settings.llm_model or config.LLM_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            response_format={"type": "json_object"},
+        )
+        return self._extract_json(completion.choices[0].message.content or "")
+
+    def _complete_codex_json(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
+        codex = self._get_codex_path()
+        if codex is None:
+            raise RuntimeError(
+                "Codex CLI not found. Install Codex, click Connect in the Web UI, "
+                "or run `codex login` once in your terminal."
+            )
+        prompt = (
+            f"{system_prompt}\n\n{user_prompt}\n\n"
+            "Respond with ONLY valid JSON matching the requested keys. No markdown."
+        )
+        result = subprocess.run(
+            [codex, "exec", "--full-auto", prompt],
+            capture_output=True,
+            text=True,
+            timeout=240,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                "Codex CLI call failed. Open Web UI → Connection → Test & Connect, "
+                "or run `codex login` in your terminal.\n"
+                f"stderr: {result.stderr.strip()}"
+            )
+        return self._extract_json(result.stdout.strip())
+
     def _resolve_backend(self) -> str:
         settings = load_settings()
         if settings.llm_backend == "codex_cli" or config.USE_CODEX_CLI:
@@ -114,7 +173,7 @@ class LLMClient:
             [codex, "exec", "--full-auto", prompt],
             capture_output=True,
             text=True,
-            timeout=180,
+            timeout=240,
         )
         if result.returncode != 0:
             raise RuntimeError(

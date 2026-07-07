@@ -7,6 +7,48 @@ from typing import Any, Literal, Optional
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
+class ParsedDataset(BaseModel):
+    """One volume/dataset's metadata parsed from the prompt.
+
+    Used when a single prompt describes *several* datasets — each becomes an entry
+    in ``ParsedUserRequest.datasets`` so the agent can record them all.
+    """
+
+    volume: Optional[str] = None
+    dataset: Optional[str] = None
+    modality: Optional[str] = None
+    organism: Optional[str] = None
+    organ: Optional[str] = None
+    tissue_region: Optional[str] = None
+    resolution_nm: Optional[tuple[float, float, float]] = None
+    shape_xyz: Optional[tuple[int, int, int]] = None
+    num_mito: Optional[int] = None
+    raw_file_path: Optional[str] = None
+    label_file_path: Optional[str] = None
+    metadata_file_path: Optional[str] = None
+    provenance: Optional[str] = None
+    source_url: Optional[str] = None
+    annotator: Optional[str] = None
+    notes: list[str] = Field(default_factory=list)
+
+    @field_validator("resolution_nm", "shape_xyz", mode="before")
+    @classmethod
+    def _list_to_tuple(cls, value):
+        if isinstance(value, list):
+            return tuple(value)
+        return value
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_null_strings(cls, data):
+        if not isinstance(data, dict):
+            return data
+        for key, val in list(data.items()):
+            if val in ("null", "None", ""):
+                data[key] = None
+        return data
+
+
 class ParsedUserRequest(BaseModel):
     """Structured output from prompt parsing."""
 
@@ -28,6 +70,9 @@ class ParsedUserRequest(BaseModel):
     provenance: Optional[str] = None
     source_url: Optional[str] = None
     annotator: Optional[str] = None
+    # When the prompt describes multiple datasets, each is listed here (the first
+    # is also mirrored into the top-level fields above for backward compatibility).
+    datasets: list[ParsedDataset] = Field(default_factory=list)
     requested_actions: list[
         Literal[
             "prepare_hf_upload",

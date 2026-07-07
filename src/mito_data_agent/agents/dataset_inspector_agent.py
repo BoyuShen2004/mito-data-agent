@@ -27,6 +27,12 @@ def dataset_inspector_agent(state: MultiAgentState) -> dict:
             f"Inspected files (raw_exists={inspection.get('raw_file_exists')}, "
             f"label_exists={inspection.get('label_file_exists')})."
         )
+        details = [
+            f"inspect_files(raw={raw}, label={label})",
+            f"raw: exists={inspection.get('raw_file_exists')}, shape={inspection.get('raw_shape_xyz')}",
+            f"label: exists={inspection.get('label_file_exists')}, shape={inspection.get('label_shape_xyz')}, "
+            f"#mito={inspection.get('num_mito')}",
+        ]
         return finalize(
             state,
             "dataset_inspector_agent",
@@ -34,6 +40,7 @@ def dataset_inspector_agent(state: MultiAgentState) -> dict:
             {"file_inspection": inspection},
             summary,
             input_keys=["raw_file_path", "label_file_path"],
+            details=details,
             warnings=warnings,
         )
     except Exception as exc:  # noqa: BLE001

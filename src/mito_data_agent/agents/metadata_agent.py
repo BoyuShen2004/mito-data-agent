@@ -42,7 +42,16 @@ def metadata_agent(state: MultiAgentState) -> dict:
         merged = merge_prompt_and_observation_metadata(
             _parsed(state), _file_inspection(state), _observation(state)
         )
-        warnings = merged.pop("warnings", [])
+        messages = merged.pop("warnings", [])
+        # Prompt/data mismatches are auto-resolved in favour of the file — treat
+        # those as informational conflicts, not warnings.
+        conflicts = [m for m in messages if "conflict" in str(m).lower()]
+        warnings = [m for m in messages if "conflict" not in str(m).lower()]
+        details = [
+            f"merged {k}={merged.get(k)} (source: {merged.get(k + '_source', 'prompt')})"
+            for k in ("resolution_nm", "shape_xyz", "num_mito")
+            if merged.get(k) is not None
+        ]
         return finalize(
             state,
             "metadata_agent",
@@ -50,7 +59,9 @@ def metadata_agent(state: MultiAgentState) -> dict:
             {"merged_metadata": merged},
             f"Merged metadata for volume '{merged.get('volume')}'.",
             input_keys=["parsed_request", "file_inspection", "volume_observation"],
+            details=details,
             warnings=warnings,
+            conflicts=conflicts,
         )
     except Exception as exc:  # noqa: BLE001
         return finalize(

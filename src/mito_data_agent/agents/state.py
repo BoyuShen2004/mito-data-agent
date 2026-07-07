@@ -88,3 +88,6 @@ class MultiAgentState(TypedDict, total=False):
 
     errors: list[dict]
     warnings: list[dict]
+    # Prompt/data conflicts auto-resolved in favour of the file (informational,
+    # not warnings): each entry is {agent, message}.
+    conflicts: list[dict]

@@ -36,8 +36,10 @@ def finalize(
     summary: str,
     *,
     input_keys: Iterable[str] | None = None,
+    details: Iterable[str] | None = None,
     warnings: Iterable[str] | None = None,
     errors: Iterable[str] | None = None,
+    conflicts: Iterable[str] | None = None,
 ) -> dict[str, Any]:
     """Build a worker agent's state update with a trace entry attached.
 
@@ -48,11 +50,16 @@ def finalize(
         outputs: the work-product fields this agent writes (e.g. ``file_inspection``).
         summary: one-line human-readable summary for the trace.
         input_keys: state keys the agent read.
+        details: component-level sub-steps (tool calls / decisions) for the trace.
         warnings/errors: new messages to fold into the shared logs.
+        conflicts: prompt/data mismatches auto-resolved in favour of the file.
+            These are informational (not warnings/errors) and feed the trace.
     """
     step = next_step(state)
     warnings = list(warnings or [])
     errors = list(errors or [])
+    details = [str(d) for d in (details or [])]
+    conflicts = [str(c) for c in (conflicts or [])]
 
     update: dict[str, Any] = dict(outputs)
     update["current_agent"] = agent
@@ -62,6 +69,8 @@ def finalize(
         update["warnings"] = _log_entries(state, "warnings", agent, warnings)
     if errors:
         update["errors"] = _log_entries(state, "errors", agent, errors)
+    if conflicts:
+        update["conflicts"] = _log_entries(state, "conflicts", agent, conflicts)
 
     entry = {
         "step": step,
@@ -70,6 +79,7 @@ def finalize(
         "input_keys": list(input_keys or []),
         "output_keys": list(outputs.keys()),
         "summary": summary,
+        "details": details + [f"conflict resolved (file wins): {c}" for c in conflicts],
         "errors": [str(e) for e in errors],
     }
     update["agent_trace"] = list(state.get("agent_trace", []) or []) + [entry]

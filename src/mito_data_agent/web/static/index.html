@@ -135,6 +135,21 @@
     .msg-line + .msg-line { margin-top: 6px; }
     .msg-line.warn { background: var(--warn-weak); color: var(--warn); }
     .msg-line.err { background: var(--err-weak); color: var(--err); }
+    .msg-line.info { background: var(--accent-weak); color: var(--accent); }
+
+    /* trace toggle switch */
+    .switch { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted);
+      font-weight: 550; cursor: pointer; user-select: none; }
+    .switch input { display: none; }
+    .switch .track { width: 34px; height: 20px; border-radius: 999px; background: var(--surface-2);
+      border: 1px solid var(--border); position: relative; transition: background .15s; }
+    .switch .track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px;
+      border-radius: 50%; background: var(--muted); transition: transform .15s, background .15s; }
+    .switch input:checked + .track { background: var(--accent); border-color: var(--accent); }
+    .switch input:checked + .track::after { transform: translateX(14px); background: #fff; }
+    body.hide-trace .trace-block { display: none; }
+    .tl-sub { margin-left: 35px; padding: 2px 0; font-size: 12px; color: var(--muted); display: flex; gap: 7px; }
+    .tl-sub .arrow { color: var(--border); }
 
     details { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
     details summary { cursor: pointer; padding: 11px 15px; font-weight: 600; font-size: 12.5px;
@@ -255,6 +270,9 @@
       <button data-tab="run" class="active">Chat</button>
       <button data-tab="records">Records</button>
     </div>
+    <label class="switch" title="Show the supervisor + agent + component trace under each answer">
+      <input type="checkbox" id="traceToggle" /><span class="track"></span> Agent trace
+    </label>
     <span class="badge" id="backendBadge" title="Active LLM backend"><span class="dot"></span> …</span>
     <button class="btn-ghost" id="newChatBtn" title="Start a new conversation">＋ New chat</button>
     <button class="btn-ghost" id="clearBtn" title="Delete everything under outputs/ (reports, artifacts, ledger)">Clear outputs</button>
@@ -479,6 +497,15 @@
       frag.appendChild(c);
     }
 
+    // Conflicts are auto-resolved in favour of the file — shown as info, not errors.
+    const conflicts = s.conflicts || [];
+    if (conflicts.length) {
+      const c = el("div", "block");
+      c.appendChild(el("h3", null, `Conflicts auto-resolved · file wins (${conflicts.length})`));
+      conflicts.forEach((cf) => c.appendChild(el("div", "msg-line info", `${esc(cf.message)}`)));
+      frag.appendChild(c);
+    }
+
     const rep = el("details"); rep.open = true;
     rep.appendChild(el("summary", null, "Execution report"));
     const rbody = el("div", "body");
@@ -525,17 +552,30 @@
 
   function traceEl(s) {
     const events = [];
-    (s.agent_trace || []).forEach((a) => events.push([a.step, "agent", label(a.agent), a.summary || a.status]));
-    (s.supervisor_decisions || []).forEach((d) => events.push([d.step, "sup", "Supervisor", `→ ${label(d.next_agent)}${d.reason ? " · " + d.reason : ""}`]));
-    events.sort((a, b) => a[0] - b[0]);
-    const det = el("details");
-    det.appendChild(el("summary", null, `Supervisor / agent trace (${events.length} steps)`));
+    (s.supervisor_decisions || []).forEach((d) => events.push({
+      step: d.step, kind: "sup", who: "Supervisor",
+      detail: `→ ${label(d.next_agent)}${d.reason ? " · " + d.reason : ""}`, sub: [],
+    }));
+    (s.agent_trace || []).forEach((a) => events.push({
+      step: a.step, kind: "agent", who: label(a.agent),
+      detail: a.summary || a.status, sub: a.details || [], status: a.status,
+    }));
+    // Order by step; on ties the supervisor decision precedes the agent it dispatched.
+    events.sort((a, b) => (a.step - b.step) || (a.kind === "sup" ? -1 : 1));
+
+    const nAgents = (s.agent_trace || []).length, nSup = (s.supervisor_decisions || []).length;
+    const det = el("details", "trace-block"); det.open = true;
+    det.appendChild(el("summary", null, `Trace — ${nSup} routing + ${nAgents} agent step(s)`));
     const body = el("div", "body");
     const tl = el("div", "timeline");
-    events.forEach(([step, kind, who, detail]) => {
-      const row = el("div", "tl " + (kind === "sup" ? "sup" : "agent"));
-      row.innerHTML = `<div class="marker">${kind === "sup" ? "◆" : "●"}</div><div class="content"><span class="who">${esc(who)}</span> <span class="detail">${esc(detail)}</span></div>`;
+    events.forEach((e) => {
+      const row = el("div", "tl " + (e.kind === "sup" ? "sup" : "agent"));
+      const badge = e.status && e.status !== "success" ? ` <span class="pill ${e.status === "failed" ? "err" : "warn"}">${esc(e.status)}</span>` : "";
+      row.innerHTML = `<div class="marker">${e.kind === "sup" ? "◆" : "●"}</div><div class="content"><span class="who">${esc(e.who)}</span> <span class="detail">${esc(e.detail)}</span>${badge}</div>`;
       tl.appendChild(row);
+      (e.sub || []).forEach((d) => {
+        tl.appendChild(el("div", "tl-sub", `<span class="arrow">↳</span><span>${esc(d)}</span>`));
+      });
     });
     if (!events.length) tl.appendChild(el("div", "hint", "No trace recorded."));
     body.appendChild(tl); det.appendChild(body);
@@ -624,6 +664,13 @@
       loadHealth();
     } catch (e) { toast("Clear failed: " + e.message); }
     finally { btn.disabled = false; btn.textContent = prev; }
+  };
+
+  /* ---------- agent-trace toggle (hidden until switched on) ---------- */
+  document.body.classList.add("hide-trace");
+  $("#traceToggle").onchange = (e) => {
+    document.body.classList.toggle("hide-trace", !e.target.checked);
+    if (e.target.checked) scrollDown();
   };
 
   loadHealth(); loadExamples(); syncSend();

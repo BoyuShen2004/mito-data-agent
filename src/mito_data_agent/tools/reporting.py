@@ -191,6 +191,12 @@ def _render_metadata(state, merged, validation, intent, run_id, records) -> str:
     lines.append("")
     lines.append(_DRY_RUN_NOTE)
 
+    conflicts = state.get("conflicts", []) or []
+    if conflicts:
+        lines.append(f"\nConflicts auto-resolved in favour of the file ({len(conflicts)}):")
+        for c in conflicts:
+            lines.append(f"  - [{c.get('agent', '?')}] {c.get('message')}")
+
     warnings = state.get("warnings", []) or []
     errors = state.get("errors", []) or []
     if warnings:
@@ -235,6 +241,7 @@ def build_execution_report(state: dict, report_text: str) -> dict:
         "supervisor_decisions": state.get("supervisor_decisions", []),
         "errors": state.get("errors", []),
         "warnings": state.get("warnings", []),
+        "conflicts": state.get("conflicts", []),
         "final_report": report_text,
     }
 
@@ -283,6 +290,7 @@ def build_summary(state: dict) -> dict[str, Any]:
         "supervisor_decisions": state.get("supervisor_decisions", []),
         "errors": state.get("errors", []),
         "warnings": state.get("warnings", []),
+        "conflicts": state.get("conflicts", []),
     }
 
 
@@ -325,6 +333,10 @@ def render_cli_summary(summary: dict) -> str:
         f"Supervisor decisions: {len(summary.get('supervisor_decisions', []))} | "
         f"Agent steps: {len(summary.get('agent_trace', []))}"
     )
+    if summary.get("conflicts"):
+        lines.append(f"\nConflicts auto-resolved (file wins) ({len(summary['conflicts'])}):")
+        for c in summary["conflicts"]:
+            lines.append(f"  - [{c.get('agent', '?')}] {c.get('message')}")
     if summary.get("errors"):
         lines.append(f"\nErrors ({len(summary['errors'])}):")
         for e in summary["errors"]:

@@ -41,6 +41,11 @@ def observation_agent(state: MultiAgentState) -> dict:
             f"Extracted observations (shape={observation.get('shape_xyz')}, "
             f"num_mito={observation.get('num_mito')})."
         )
+        details = [
+            f"resolution_nm={observation.get('resolution_nm')} (source: {observation.get('resolution_source')})",
+            f"shape_xyz={observation.get('shape_xyz')} (source: {observation.get('shape_source')})",
+            f"num_mito={observation.get('num_mito')} (source: {observation.get('num_mito_source')})",
+        ]
         return finalize(
             state,
             "observation_agent",
@@ -48,6 +53,7 @@ def observation_agent(state: MultiAgentState) -> dict:
             {"volume_observation": observation},
             summary,
             input_keys=["parsed_request", "file_inspection", "raw_file_path", "label_file_path"],
+            details=details,
             warnings=list(result.warnings),
         )
     except Exception as exc:  # noqa: BLE001

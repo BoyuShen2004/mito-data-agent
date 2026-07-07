@@ -64,6 +64,7 @@ def initial_multi_agent_state(user_prompt: str) -> MultiAgentState:
         "real_write_performed": False,
         "errors": [],
         "warnings": [],
+        "conflicts": [],
     }
 
 
@@ -82,16 +83,21 @@ def executed_route(state: MultiAgentState) -> list[str]:
 
 def format_trace_lines(state: MultiAgentState) -> list[str]:
     """Interleave agent_trace and supervisor_decisions into ordered trace lines."""
-    events: list[tuple[int, str]] = []
+    events: list[tuple[int, int, str]] = []
     for entry in state.get("agent_trace", []) or []:
         label = _agent_label(entry["agent"])
-        events.append((entry["step"], f"[{label}] {entry.get('summary', entry['status'])}"))
+        events.append((entry["step"], 0, f"[{label}] {entry.get('summary', entry['status'])}"))
+        # Component-level sub-steps (tool calls / decisions) under each agent.
+        for detail in entry.get("details", []) or []:
+            events.append((entry["step"], 1, f"    ↳ {detail}"))
     for dec in state.get("supervisor_decisions", []) or []:
         events.append(
-            (dec["step"], f"[Supervisor] next_agent={dec['next_agent']}  ({dec.get('reason', '')})")
+            (dec["step"], -1, f"[Supervisor] next_agent={dec['next_agent']}  ({dec.get('reason', '')})")
         )
-    events.sort(key=lambda e: e[0])
-    return [line for _, line in events]
+    # Sort by step, then by kind so the supervisor decision precedes the agent it
+    # dispatched, and each agent's sub-steps follow its summary line.
+    events.sort(key=lambda e: (e[0], e[1]))
+    return [line for _, _, line in events]
 
 
 def _agent_label(agent: str) -> str:

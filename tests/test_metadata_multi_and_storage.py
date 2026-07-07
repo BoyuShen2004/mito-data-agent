@@ -102,8 +102,9 @@ def test_file_info_wins_over_conflicting_prompt():
     assert any("Mito conflict" in w for w in warnings)
 
 
-def test_record_agent_applies_file_over_prompt_and_warns():
-    """The record agent records the file-corrected values and logs the conflict."""
+def test_record_agent_applies_file_over_prompt_and_logs_conflict():
+    """The record agent records the file-corrected values and logs the conflict as
+    an informational conflict (auto-resolved, file wins) — NOT a warning/error."""
     state = _base_state()
     state["schema_validation"] = {"success": True, "status": "passed"}
     state["merged_metadata"] = {}
@@ -122,7 +123,12 @@ def test_record_agent_applies_file_over_prompt_and_warns():
 
     rec = metadata_store.get_record("vol1")
     assert rec["metadata"]["num_mito"] == 2  # file value, not 999
-    assert any("Mito conflict" in w["message"] for w in out["warnings"])
+    # Conflicts go to the dedicated `conflicts` channel, not warnings/errors.
+    assert any("Mito conflict" in c["message"] for c in out["conflicts"])
+    assert not out.get("warnings")
+    # And the conflict shows up as a component detail on the trace entry.
+    trace_details = out["agent_trace"][-1]["details"]
+    assert any("conflict resolved (file wins)" in d for d in trace_details)
 
 
 def test_report_shows_every_recorded_dataset():

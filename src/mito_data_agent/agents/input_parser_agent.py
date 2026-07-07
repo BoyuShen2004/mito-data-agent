@@ -45,6 +45,15 @@ def input_parser_agent(state: MultiAgentState) -> dict:
             "label_file_path": payload.get("label_file_path"),
             "metadata_file_path": payload.get("metadata_file_path"),
         }
+        n_datasets = len(payload.get("datasets") or []) or (1 if payload.get("volume") else 0)
+        details = [
+            f"intent = {payload.get('intent')}",
+            f"datasets found: {n_datasets}",
+        ]
+        if payload.get("raw_file_path") or payload.get("label_file_path"):
+            details.append(
+                f"files: raw={payload.get('raw_file_path')}, label={payload.get('label_file_path')}"
+            )
         return finalize(
             state,
             "input_parser_agent",
@@ -52,6 +61,7 @@ def input_parser_agent(state: MultiAgentState) -> dict:
             outputs,
             f"Parsed user request (intent={payload.get('intent')}).",
             input_keys=["user_prompt"],
+            details=details,
         )
     except Exception as exc:  # noqa: BLE001 — keep the workflow alive
         payload = {"intent": "unsupported_request", "parse_error": str(exc)}

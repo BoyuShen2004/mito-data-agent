@@ -103,11 +103,14 @@ def metadata_record_agent(state: MultiAgentState) -> dict:
 
     recorded: list[dict] = []
     errors: list[str] = []
-    warnings: list[str] = []
+    conflicts: list[str] = []
+    details: list[str] = []
     for metadata, validated in to_write:
         # File info wins over the prompt on any conflict (shape / # Mito / resolution).
-        metadata, conflicts = reconcile_with_files(metadata)
-        warnings.extend(conflicts)
+        # Conflicts are auto-resolved (file wins) and logged as informational
+        # notes, NOT warnings — the resolution is the intended behaviour.
+        metadata, ds_conflicts = reconcile_with_files(metadata)
+        conflicts.extend(ds_conflicts)
         try:
             entry = record_metadata(
                 metadata,
@@ -127,6 +130,10 @@ def metadata_record_agent(state: MultiAgentState) -> dict:
                     "metadata": entry.get("metadata", {}),
                 }
             )
+            details.append(
+                f"recorded '{entry.get('volume')}' (v{entry.get('times_recorded')}) → "
+                f"store + {sidecar}"
+            )
         except Exception as exc:  # noqa: BLE001
             errors.append(f"{metadata.get('volume')}: {exc}")
 
@@ -138,8 +145,8 @@ def metadata_record_agent(state: MultiAgentState) -> dict:
     }
     names = ", ".join(r["volume"] for r in recorded) or "none"
     summary = f"Recorded {len(recorded)} volume(s) to store + data dir: {names}."
-    if warnings:
-        summary += f" ({len(warnings)} prompt/data conflict(s) resolved in favor of data.)"
+    if conflicts:
+        summary += f" ({len(conflicts)} prompt/data conflict(s) auto-resolved in favor of data.)"
     return finalize(
         state,
         "metadata_record_agent",
@@ -147,6 +154,7 @@ def metadata_record_agent(state: MultiAgentState) -> dict:
         {"metadata_record": record},
         summary,
         input_keys=["merged_metadata", "parsed_request", "schema_validation"],
-        warnings=warnings,
+        details=details,
+        conflicts=conflicts,
         errors=errors,
     )

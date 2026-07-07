@@ -7,7 +7,7 @@ from typing import Any
 from mito_data_agent.agents.graph import build_multi_agent_graph
 from mito_data_agent.agents.state import MultiAgentState
 from mito_data_agent.agents.supervisor_agent import SupervisorPolicy
-from mito_data_agent.tools.reporting import build_summary
+from mito_data_agent.tools.reporting import build_summary, render_report_text
 from mito_data_agent.utils.ids import make_run_id
 from mito_data_agent.utils.paths import ensure_output_dirs
 
@@ -142,4 +142,39 @@ def run_multi_agent(
         "summary": build_summary(result),
         "raw": result,
         "trace": format_trace_lines(result),
+    }
+
+
+def stream_multi_agent(user_prompt: str):
+    """Run the workflow, yielding trace events *as each step completes*.
+
+    Yields ``("step", {"supervisor_decisions": [...], "agent_trace": [...]})`` with
+    only the newly-added entries after every graph super-step, then a final
+    ``("final", {run_id, report_text, summary, trace})`` once the run is done.
+    Lets a UI show the supervisor/agent/component trace live instead of only at
+    the end.
+    """
+    ensure_output_dirs()
+    graph = _get_graph()
+    state = initial_multi_agent_state(user_prompt)
+
+    seen_sup = 0
+    seen_agent = 0
+    last = state
+    for value in graph.stream(
+        state, config={"recursion_limit": _RECURSION_LIMIT}, stream_mode="values"
+    ):
+        last = value
+        sup = value.get("supervisor_decisions", []) or []
+        agent = value.get("agent_trace", []) or []
+        new_sup, new_agent = sup[seen_sup:], agent[seen_agent:]
+        seen_sup, seen_agent = len(sup), len(agent)
+        if new_sup or new_agent:
+            yield "step", {"supervisor_decisions": new_sup, "agent_trace": new_agent}
+
+    yield "final", {
+        "run_id": last.get("run_id"),
+        "report_text": render_report_text(last),
+        "summary": build_summary(last),
+        "trace": format_trace_lines(last),
     }

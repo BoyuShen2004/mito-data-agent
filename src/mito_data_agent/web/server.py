@@ -18,17 +18,18 @@ Endpoints
 
 from __future__ import annotations
 
+import json
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal, Optional
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from mito_data_agent import config
-from mito_data_agent.agents.runner import run_multi_agent
+from mito_data_agent.agents.runner import run_multi_agent, stream_multi_agent
 from mito_data_agent.llm.settings_store import (
     LLMConnectionSettings,
     apply_settings_to_config,
@@ -142,6 +143,29 @@ def run(req: RunRequest) -> dict:
         "summary": result.get("summary", {}),
         "trace": result.get("trace", []),
     }
+
+
+@app.post("/api/run/stream")
+def run_stream(req: RunRequest) -> StreamingResponse:
+    """Run the workflow, streaming trace events as newline-delimited JSON so the
+    UI can show the supervisor/agent/component trace live.
+
+    Each line is one JSON object: ``{"type":"step", supervisor_decisions, agent_trace}``
+    per completed step, a final ``{"type":"final", run_id, report_text, summary,
+    trace}``, or ``{"type":"error", detail}``.
+    """
+    prompt = req.prompt.strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="Prompt must not be empty.")
+
+    def gen():
+        try:
+            for kind, payload in stream_multi_agent(prompt):
+                yield json.dumps({"type": kind, **payload}, default=str) + "\n"
+        except Exception as exc:  # surface failures inline in the stream
+            yield json.dumps({"type": "error", "detail": f"Run failed: {exc}"}) + "\n"
+
+    return StreamingResponse(gen(), media_type="application/x-ndjson")
 
 
 @app.get("/api/records")

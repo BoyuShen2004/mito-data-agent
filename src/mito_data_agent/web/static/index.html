@@ -192,7 +192,12 @@
     .composer .hint { max-width: 760px; margin: 8px auto 0; text-align: center; font-size: 11.5px; color: var(--muted); }
     .spinner { width: 15px; height: 15px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff;
       border-radius: 50%; animation: spin .7s linear infinite; }
+    .spinner-dark { width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent);
+      border-radius: 50%; display: inline-block; animation: spin .7s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
+    .block.live { border-color: var(--accent); }
+    .live-head { display: flex; align-items: center; gap: 9px; font-size: 12.5px; font-weight: 600;
+      color: var(--muted); margin-bottom: 10px; }
 
     /* ---- Examples sidebar ---- */
     .examples-col { border-left: 1px solid var(--border); background: var(--surface); overflow-y: auto; padding: 20px 16px; }
@@ -442,13 +447,36 @@
     if (!prompt) return;
     addUser(prompt);
     promptEl.value = ""; autoGrow(); syncSend();
-    const loading = el("div", "block");
-    loading.innerHTML = '<div class="typing"><span></span><span></span><span></span></div>';
-    const { body } = addAssistant(loading);
+    const live = liveTraceNode();
+    const { body } = addAssistant(live.node);
     $("#runBtn").disabled = true;
     try {
-      const res = await api("/api/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt }) });
-      body.innerHTML = ""; body.appendChild(resultNode(res)); scrollDown();
+      const resp = await fetch("/api/run/stream", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt }),
+      });
+      if (!resp.ok || !resp.body) {
+        let detail = resp.statusText;
+        try { detail = (await resp.json()).detail || detail; } catch (_) {}
+        throw new Error(detail);
+      }
+      const reader = resp.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "", finalMsg = null;
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let nl;
+        while ((nl = buf.indexOf("\n")) >= 0) {
+          const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
+          if (!line) continue;
+          const msg = JSON.parse(line);
+          if (msg.type === "step") { live.addEvents(msg); scrollDown(); }
+          else if (msg.type === "final") { finalMsg = msg; }
+          else if (msg.type === "error") { throw new Error(msg.detail); }
+        }
+      }
+      if (finalMsg) { body.innerHTML = ""; body.appendChild(resultNode(finalMsg)); scrollDown(); }
     } catch (e) {
       body.innerHTML = ""; body.appendChild(el("div", "block", `<div class="msg-line err">Run failed: ${esc(e.message)}</div>`));
     } finally { syncSend(); }
@@ -550,16 +578,22 @@
     return rows;
   }
 
+  // Shared trace-row builders (used by both the live stream and the final trace).
+  function trRow(kind, who, detail, status) {
+    const row = el("div", "tl " + (kind === "sup" ? "sup" : "agent"));
+    const badge = status && status !== "success"
+      ? ` <span class="pill ${status === "failed" ? "err" : "warn"}">${esc(status)}</span>` : "";
+    row.innerHTML = `<div class="marker">${kind === "sup" ? "◆" : "●"}</div><div class="content">`
+      + `<span class="who">${esc(who)}</span> <span class="detail">${esc(detail)}</span>${badge}</div>`;
+    return row;
+  }
+  function trSub(detail) { return el("div", "tl-sub", `<span class="arrow">↳</span><span>${esc(detail)}</span>`); }
+  const supDetail = (d) => `→ ${label(d.next_agent)}${d.reason ? " · " + d.reason : ""}`;
+
   function traceEl(s) {
     const events = [];
-    (s.supervisor_decisions || []).forEach((d) => events.push({
-      step: d.step, kind: "sup", who: "Supervisor",
-      detail: `→ ${label(d.next_agent)}${d.reason ? " · " + d.reason : ""}`, sub: [],
-    }));
-    (s.agent_trace || []).forEach((a) => events.push({
-      step: a.step, kind: "agent", who: label(a.agent),
-      detail: a.summary || a.status, sub: a.details || [], status: a.status,
-    }));
+    (s.supervisor_decisions || []).forEach((d) => events.push({ step: d.step, kind: "sup", who: "Supervisor", detail: supDetail(d), sub: [] }));
+    (s.agent_trace || []).forEach((a) => events.push({ step: a.step, kind: "agent", who: label(a.agent), detail: a.summary || a.status, sub: a.details || [], status: a.status }));
     // Order by step; on ties the supervisor decision precedes the agent it dispatched.
     events.sort((a, b) => (a.step - b.step) || (a.kind === "sup" ? -1 : 1));
 
@@ -569,17 +603,36 @@
     const body = el("div", "body");
     const tl = el("div", "timeline");
     events.forEach((e) => {
-      const row = el("div", "tl " + (e.kind === "sup" ? "sup" : "agent"));
-      const badge = e.status && e.status !== "success" ? ` <span class="pill ${e.status === "failed" ? "err" : "warn"}">${esc(e.status)}</span>` : "";
-      row.innerHTML = `<div class="marker">${e.kind === "sup" ? "◆" : "●"}</div><div class="content"><span class="who">${esc(e.who)}</span> <span class="detail">${esc(e.detail)}</span>${badge}</div>`;
-      tl.appendChild(row);
-      (e.sub || []).forEach((d) => {
-        tl.appendChild(el("div", "tl-sub", `<span class="arrow">↳</span><span>${esc(d)}</span>`));
-      });
+      tl.appendChild(trRow(e.kind, e.who, e.detail, e.status));
+      (e.sub || []).forEach((d) => tl.appendChild(trSub(d)));
     });
     if (!events.length) tl.appendChild(el("div", "hint", "No trace recorded."));
     body.appendChild(tl); det.appendChild(body);
     return det;
+  }
+
+  // Live trace panel that grows as stream events arrive.
+  function liveTraceNode() {
+    const node = el("div", "block live");
+    const head = el("div", "live-head");
+    head.innerHTML = `<span class="spinner-dark"></span><span class="live-label">Starting…</span>`;
+    const labelEl = head.querySelector(".live-label");
+    const tl = el("div", "timeline");
+    node.appendChild(head); node.appendChild(tl);
+    return {
+      node,
+      addEvents(msg) {
+        (msg.supervisor_decisions || []).forEach((d) => {
+          tl.appendChild(trRow("sup", "Supervisor", supDetail(d)));
+          labelEl.textContent = `Routing to ${label(d.next_agent)}…`;
+        });
+        (msg.agent_trace || []).forEach((a) => {
+          tl.appendChild(trRow("agent", label(a.agent), a.summary || a.status, a.status));
+          (a.details || []).forEach((d) => tl.appendChild(trSub(d)));
+          labelEl.textContent = `${label(a.agent)} finished`;
+        });
+      },
+    };
   }
   const label = (a) => (a || "").replace(/_agent$/, "").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) + (a && a.endsWith("_agent") ? " Agent" : "");
 

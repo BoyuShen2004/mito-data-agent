@@ -158,11 +158,14 @@ python -m mito_data_agent web --port 8000     # pick a port (auto-falls-back if 
 
 A single-page UI (FastAPI backend, no build step) with two views:
 
-- **Run** — a prompt composer with one-click example prompts, then a rendered
-  result: a status strip (run id / intent / validation), **recorded-dataset
-  cards** (with `file`-vs-`prompt` source tags), dry-run artifacts, warnings, the
-  full execution report, and a **supervisor/agent trace timeline**. `⌘/Ctrl+Enter`
-  runs the prompt.
+- **Run** — a ChatGPT-style prompt composer with one-click example prompts. While
+  the workflow runs, a **live trace streams in** step-by-step (supervisor routing →
+  agent → component sub-steps) so you can watch the run progress; when it finishes
+  the answer is rendered: a status strip (run id / intent / validation),
+  **recorded-dataset cards** (with `file`-vs-`prompt` source tags), dry-run
+  artifacts, warnings, **conflicts auto-resolved in favour of the file**, the full
+  execution report, and the complete trace (toggle the header **Agent trace**
+  switch to keep it visible after the run). `⌘/Ctrl+Enter` runs the prompt.
 - **Records** — a searchable table over the metadata ledger.
 
 The gear icon opens **LLM settings** (backend / model / OpenAI key / Codex path),

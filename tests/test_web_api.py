@@ -7,6 +7,8 @@ and the real graph deterministically (no network).
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 pytest.importorskip("fastapi")
@@ -99,6 +101,28 @@ def test_run_and_records_roundtrip(client):
     assert one.json()["volume"] == "vol1"
 
     assert client.get("/api/records/does-not-exist").status_code == 404
+
+
+def test_run_stream_rejects_empty_prompt(client):
+    assert client.post("/api/run/stream", json={"prompt": "   "}).status_code == 400
+
+
+def test_run_stream_emits_steps_then_final(client):
+    with client.stream("POST", "/api/run/stream", json={"prompt": UPLOAD_PROMPT}) as r:
+        assert r.status_code == 200
+        msgs = [json.loads(ln) for ln in r.iter_lines() if ln.strip()]
+
+    types = [m["type"] for m in msgs]
+    # The trace streams incrementally (>=1 step) before the terminal "final".
+    assert "step" in types
+    assert types[-1] == "final"
+    # At least one streamed step carried agent-trace entries as they completed.
+    assert any(m.get("agent_trace") for m in msgs if m["type"] == "step")
+
+    final = msgs[-1]
+    assert final["run_id"] and final["report_text"]
+    volumes = [d["volume"] for d in final["summary"].get("recorded_datasets", [])]
+    assert "vol1" in volumes
 
 
 def test_clear_endpoint(client, monkeypatch, tmp_path):

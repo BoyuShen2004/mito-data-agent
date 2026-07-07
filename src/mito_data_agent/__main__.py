@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import sys
 
-from mito_data_agent.cli import clear, records, run, web
+from mito_data_agent.cli import clear, reconcile, records, run, web
 
 COMMANDS = {
     "run": run.main,
     "records": records.main,
+    "reconcile": reconcile.main,
     "clear": clear.main,
     "web": web.main,
 }
@@ -19,14 +20,16 @@ Mito Data Agent — supervisor-based multi-agent workflow for MitoVerse metadata
 Usage:
   python -m mito_data_agent run --prompt-file prompts/examples/upload_prompt.md --trace
   python -m mito_data_agent records --volume vol1
+  python -m mito_data_agent reconcile --dry-run
   python -m mito_data_agent web --port 7860
   python -m mito_data_agent clear -y
 
 Commands:
-  run      Run the supervisor-based multi-agent workflow (CLI, --trace)
-  records  Query the recorded-metadata store
-  web      Serve the web UI (http://127.0.0.1:7860)
-  clear    Delete all outputs/ and run history
+  run        Run the supervisor-based multi-agent workflow (CLI, --trace)
+  records    Query the recorded-metadata store
+  reconcile  Rename stored records/sidecars to match on-disk data files
+  web        Serve the web UI (http://127.0.0.1:7860)
+  clear      Delete all outputs/ and run history
 """
 
 

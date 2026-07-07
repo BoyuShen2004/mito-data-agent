@@ -68,6 +68,8 @@ def _locate_files(metadata: dict) -> tuple[Optional[str], Optional[str]]:
         metadata.get("metadata_file_path"),
         metadata.get("volume"),
         metadata.get("dataset"),
+        metadata.get("provenance"),
+        metadata.get("source_volume"),
     ):
         raw, label = _guess_from_name(hint)
         if raw or label:

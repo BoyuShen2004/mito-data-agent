@@ -60,6 +60,45 @@ def test_records_are_upserted_with_history():
     assert len(metadata_store.list_records()) == 1  # still one volume, not duplicated
 
 
+def test_reconcile_renames_record_and_sidecar_to_data_file(tmp_path, monkeypatch):
+    """A record named from the prompt (MitoHardLiver) is re-keyed to its actual
+    data file (jrc_x), the sidecar is renamed, and the dataset name is preserved."""
+    from mito_data_agent import config
+
+    data = tmp_path / "data"  # already created + wired as the sidecar dir by conftest
+    data.mkdir(exist_ok=True)
+    (data / "jrc_x_0000.tiff").write_bytes(b"raw")
+    (data / "jrc_x.tiff").write_bytes(b"label")
+    monkeypatch.setattr(config, "DEFAULT_DATA_DIR", str(data))
+    monkeypatch.setattr(metadata_store, "get_sidecar_dir", lambda: data)
+
+    # Seed a misnamed record + sidecar: name is from the prompt, but `provenance`
+    # points at the real file stem (paths were never captured — the real-world bug).
+    seed = {"volume": "MitoHardLiver", "dataset": "MitoHardLiver", "provenance": "jrc_x"}
+    metadata_store.record_metadata(seed, run_id="r1")
+    metadata_store.write_metadata_sidecar(seed)
+    assert (data / "mitohardliver.metadata.json").exists()
+
+    changes = metadata_store.reconcile_record_names()
+    assert changes == [
+        {"old": "mitohardliver", "new": "jrc_x", "removed_sidecar": "mitohardliver.metadata.json"}
+    ]
+
+    # Store re-keyed to the file stem; dataset preserved; file paths backfilled.
+    assert "mitohardliver" not in metadata_store.load_store()["records"]
+    rec = metadata_store.get_record("jrc_x")
+    assert rec is not None and rec["volume"] == "jrc_x"
+    assert rec["metadata"]["dataset"] == "MitoHardLiver"
+    assert rec["metadata"]["raw_file_path"].endswith("jrc_x_0000.tiff")
+
+    # Sidecar renamed on disk.
+    assert (data / "jrc_x.metadata.json").exists()
+    assert not (data / "mitohardliver.metadata.json").exists()
+
+    # Idempotent: nothing left to rename.
+    assert metadata_store.reconcile_record_names() == []
+
+
 def test_query_records_by_field():
     """Records can be filtered by a metadata field for later reuse."""
     run_multi_agent(COMPLETE_PROMPT)

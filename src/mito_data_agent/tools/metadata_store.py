@@ -208,6 +208,64 @@ def get_record(volume: str) -> Optional[dict[str, Any]]:
     return None
 
 
+def reconcile_record_names(*, dry_run: bool = False) -> list[dict[str, Any]]:
+    """Rename stored records + sidecars whose name doesn't match the on-disk data.
+
+    For every record, if its real data files can be located (via file paths or a
+    name hint like ``provenance``), the record + its ``<name>.metadata.json`` are
+    re-keyed to the actual **file stem** (e.g. ``MitoHardLiver`` ->
+    ``jrc_mus-liver_recon-1_test0``), backfilling the raw/label paths and removing
+    the old misnamed sidecar. The ``dataset`` name and history are preserved.
+
+    Returns a list of ``{"old", "new", "removed_sidecar"}`` changes. With
+    ``dry_run=True`` nothing is written and the list is a preview.
+    """
+    from mito_data_agent.tools.reconcile_metadata import canonical_volume_from_files
+    from mito_data_agent.utils.paths import normalize_stored_path
+
+    store = load_store()
+    records = store["records"]
+    data_dir = get_sidecar_dir()
+    changes: list[dict[str, Any]] = []
+
+    for old_slug in list(records.keys()):
+        rec = records[old_slug]
+        md = dict(rec.get("metadata", {}))
+        canonical = canonical_volume_from_files(md)
+        if not canonical:
+            continue
+        new_slug = safe_slug(canonical)
+        if new_slug == old_slug and rec.get("volume") == canonical:
+            continue  # already consistent
+
+        removed_sidecar: Optional[str] = None
+        if not dry_run:
+            md["volume"] = canonical
+            if data_dir is not None:
+                for suffix, key in (("_0000.tiff", "raw_file_path"), (".tiff", "label_file_path")):
+                    f = data_dir / f"{canonical}{suffix}"
+                    if f.exists() and not md.get(key):
+                        md[key] = normalize_stored_path(str(f))
+            records.pop(old_slug, None)
+            records[new_slug] = {**rec, "volume": canonical, "slug": new_slug, "metadata": md}
+            if data_dir is not None:
+                write_metadata_sidecar(md)  # writes <new_slug>.metadata.json
+                old_path = data_dir / f"{old_slug}.metadata.json"
+                new_path = data_dir / f"{new_slug}.metadata.json"
+                if old_path.exists() and old_path != new_path:
+                    old_path.unlink()
+                    removed_sidecar = old_path.name
+
+        changes.append({"old": old_slug, "new": new_slug, "removed_sidecar": removed_sidecar})
+
+    if changes and not dry_run:
+        store["meta"] = {"updated_at": _now(), "count": len(records)}
+        path = get_store_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(store, indent=2, default=str), encoding="utf-8")
+    return changes
+
+
 def query_records(**filters: Any) -> list[dict[str, Any]]:
     """Return records whose metadata matches all provided field filters.
 

@@ -218,12 +218,14 @@ mito_data_agent/
       supervisor_agent.py            #   supervisor node + safety net
       *_agent.py                     #   worker agents (wrap tools)
       graph.py / state.py / registry.py
-    tools/                           # all real work + formatting
+    tools/                           # all real work + formatting (deterministic)
       reporting.py                   #   report text / JSON / CLI summary
+      record_datasets.py             #   collect + reconcile + record every dataset
       metadata_store.py              #   persistent ledger + data-dir sidecars
       reconcile_metadata.py          #   file-wins-over-prompt reconciliation
+      trace_details.py               #   per-agent trace sub-step formatting
       parse_prompt*.py, inspect_files.py, merge_metadata.py, validate_metadata.py,
-      generate_*.py, pseudo_*.py, *_mitoverse_*.py, list_local_data.py
+      generate_*.py, pseudo_*.py, *_mitoverse_*.py, list_local_data.py, chat_store.py
     llm/                             # LLM client + prompt templates + settings
     tasks/                           # intent taxonomy for the parser
     schemas.py, config.py, utils/

@@ -5,6 +5,7 @@ from __future__ import annotations
 from mito_data_agent.agents.base import finalize
 from mito_data_agent.agents.state import MultiAgentState
 from mito_data_agent.tools.inspect_files import inspect_files
+from mito_data_agent.tools.trace_details import inspection_details
 
 
 def dataset_inspector_agent(state: MultiAgentState) -> dict:
@@ -27,12 +28,6 @@ def dataset_inspector_agent(state: MultiAgentState) -> dict:
             f"Inspected files (raw_exists={inspection.get('raw_file_exists')}, "
             f"label_exists={inspection.get('label_file_exists')})."
         )
-        details = [
-            f"inspect_files(raw={raw}, label={label})",
-            f"raw: exists={inspection.get('raw_file_exists')}, shape={inspection.get('raw_shape_xyz')}",
-            f"label: exists={inspection.get('label_file_exists')}, shape={inspection.get('label_shape_xyz')}, "
-            f"#mito={inspection.get('num_mito')}",
-        ]
         return finalize(
             state,
             "dataset_inspector_agent",
@@ -40,7 +35,7 @@ def dataset_inspector_agent(state: MultiAgentState) -> dict:
             {"file_inspection": inspection},
             summary,
             input_keys=["raw_file_path", "label_file_path"],
-            details=details,
+            details=inspection_details(inspection, raw, label),
             warnings=warnings,
         )
     except Exception as exc:  # noqa: BLE001

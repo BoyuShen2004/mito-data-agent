@@ -10,6 +10,7 @@ from mito_data_agent.schemas import (
     VolumeObservation,
 )
 from mito_data_agent.tools.merge_metadata import merge_prompt_and_observation_metadata
+from mito_data_agent.tools.trace_details import merge_details
 
 
 def _parsed(state: MultiAgentState) -> ParsedUserRequest:
@@ -47,11 +48,6 @@ def metadata_agent(state: MultiAgentState) -> dict:
         # those as informational conflicts, not warnings.
         conflicts = [m for m in messages if "conflict" in str(m).lower()]
         warnings = [m for m in messages if "conflict" not in str(m).lower()]
-        details = [
-            f"merged {k}={merged.get(k)} (source: {merged.get(k + '_source', 'prompt')})"
-            for k in ("resolution_nm", "shape_xyz", "num_mito")
-            if merged.get(k) is not None
-        ]
         return finalize(
             state,
             "metadata_agent",
@@ -59,7 +55,7 @@ def metadata_agent(state: MultiAgentState) -> dict:
             {"merged_metadata": merged},
             f"Merged metadata for volume '{merged.get('volume')}'.",
             input_keys=["parsed_request", "file_inspection", "volume_observation"],
-            details=details,
+            details=merge_details(merged),
             warnings=warnings,
             conflicts=conflicts,
         )

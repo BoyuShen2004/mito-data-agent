@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from mito_data_agent.agents.base import finalize
 from mito_data_agent.agents.state import MultiAgentState
+from mito_data_agent.tools.trace_details import validation_details
 from mito_data_agent.tools.validate_metadata import validate_required_metadata
 
 
@@ -24,10 +25,6 @@ def validation_agent(state: MultiAgentState) -> dict:
     else:
         summary = f"Validation failed — missing: {', '.join(result.missing_fields)}"
 
-    details = [f"validate_required_metadata → {validation['status']}"]
-    if result.missing_fields:
-        details.append(f"missing required fields: {', '.join(result.missing_fields)}")
-
     return finalize(
         state,
         "validation_agent",
@@ -35,6 +32,6 @@ def validation_agent(state: MultiAgentState) -> dict:
         {"schema_validation": validation},
         summary,
         input_keys=["merged_metadata"],
-        details=details,
+        details=validation_details(validation),
         warnings=list(result.warnings),
     )

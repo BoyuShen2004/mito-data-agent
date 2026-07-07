@@ -4,28 +4,8 @@ from __future__ import annotations
 
 from mito_data_agent.agents.base import finalize
 from mito_data_agent.agents.state import MultiAgentState
-from mito_data_agent.tools.parse_prompt import parse_user_prompt
-
-# Top-level fields that a first dataset can fill when the LLM only populated
-# ``datasets`` (multi-dataset prompts) and left the primary fields empty.
-_PRIMARY_FIELDS = (
-    "volume", "dataset", "modality", "organism", "organ", "tissue_region",
-    "resolution_nm", "shape_xyz", "num_mito", "raw_file_path", "label_file_path",
-    "metadata_file_path", "provenance", "source_url", "annotator",
-)
-
-
-def _promote_primary(payload: dict) -> dict:
-    """If only ``datasets`` was filled, mirror the first dataset into the
-    top-level fields so the primary metadata/validation path has data to work on."""
-    datasets = payload.get("datasets") or []
-    if payload.get("volume") or not datasets:
-        return payload
-    first = datasets[0]
-    for field in _PRIMARY_FIELDS:
-        if payload.get(field) is None and first.get(field) is not None:
-            payload[field] = first[field]
-    return payload
+from mito_data_agent.tools.parse_prompt import parse_user_prompt, promote_primary_fields
+from mito_data_agent.tools.trace_details import parser_details
 
 
 def input_parser_agent(state: MultiAgentState) -> dict:
@@ -38,22 +18,13 @@ def input_parser_agent(state: MultiAgentState) -> dict:
     prompt = state.get("user_prompt", "") or ""
     try:
         parsed = parse_user_prompt(prompt)
-        payload = _promote_primary(parsed.model_dump())
+        payload = promote_primary_fields(parsed.model_dump())
         outputs = {
             "parsed_request": payload,
             "raw_file_path": payload.get("raw_file_path"),
             "label_file_path": payload.get("label_file_path"),
             "metadata_file_path": payload.get("metadata_file_path"),
         }
-        n_datasets = len(payload.get("datasets") or []) or (1 if payload.get("volume") else 0)
-        details = [
-            f"intent = {payload.get('intent')}",
-            f"datasets found: {n_datasets}",
-        ]
-        if payload.get("raw_file_path") or payload.get("label_file_path"):
-            details.append(
-                f"files: raw={payload.get('raw_file_path')}, label={payload.get('label_file_path')}"
-            )
         return finalize(
             state,
             "input_parser_agent",
@@ -61,7 +32,7 @@ def input_parser_agent(state: MultiAgentState) -> dict:
             outputs,
             f"Parsed user request (intent={payload.get('intent')}).",
             input_keys=["user_prompt"],
-            details=details,
+            details=parser_details(payload),
         )
     except Exception as exc:  # noqa: BLE001 — keep the workflow alive
         payload = {"intent": "unsupported_request", "parse_error": str(exc)}

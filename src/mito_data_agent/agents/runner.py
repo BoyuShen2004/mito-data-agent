@@ -59,6 +59,7 @@ def initial_multi_agent_state(user_prompt: str) -> MultiAgentState:
         "mitoverse_lookup": None,
         "mitoverse_search": None,
         "storage_info": None,
+        "chat_response": None,
         "final_report": None,
         "execution_report_path": None,
         "real_write_performed": False,

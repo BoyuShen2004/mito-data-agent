@@ -35,6 +35,10 @@ Choose exactly one `next_agent` from the allowed list, or `finish` when the \
 user's request has been satisfied and the final report has been written.
 
 Guidelines:
+- If the user is just chatting — a greeting, small talk, "how are you", "what can \
+you do", thanks, or ANY general/unrelated question that is not a mitochondria-data \
+task — route to `chat_agent` to reply conversationally, then `finish`. You do NOT \
+need to parse first for chat.
 - `input_parser_agent` must run before anything else needs the parsed request.
 - Only run the agents the user's request actually needs. A "what data do I have" \
 request needs `inventory_agent`; a "is X already in MitoVerse" request needs \

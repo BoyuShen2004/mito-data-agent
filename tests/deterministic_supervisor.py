@@ -79,6 +79,24 @@ _INTENT_TO_MODE = {
 }
 
 
+_TASK_MARKERS = (
+    "upload", "metadata", "record", "recorded", "volume", "dataset", "readiness",
+    "mitoverse", "inventory", "data", "where", "store", "stored", "saved", ".tif",
+    "catalog", "collection",
+)
+_CHAT_MARKERS = (
+    "hello", "how are you", "what can you do", "who are you", "thank", "joke",
+    "weather", "你好", "聊天",
+)
+
+
+def _is_chat(lower: str) -> bool:
+    """Casual/general conversation (not a data task)."""
+    if any(t in lower for t in _TASK_MARKERS):
+        return False
+    return any(c in lower for c in _CHAT_MARKERS)
+
+
 def _is_storage_question(lower: str) -> bool:
     if "what have you recorded" in lower or "what did you record" in lower:
         return True
@@ -112,6 +130,14 @@ class ScriptedSupervisorModel:
 
     def route(self, context: dict[str, Any]) -> dict[str, Any]:
         progress = context.get("progress", {})
+        lower = (context.get("user_prompt") or "").lower()
+
+        # Casual conversation: reply directly (no parsing), then finish.
+        if _is_chat(lower):
+            if not progress.get("chat_response"):
+                return _decision("chat_agent", "casual conversation")
+            return _decision("finish", "chat replied")
+
         if not progress.get("parsed_request"):
             return _decision("input_parser_agent", "prompt not parsed")
 

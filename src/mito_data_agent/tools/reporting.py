@@ -51,6 +51,9 @@ def _dataset_lines(vol: dict) -> list[str]:
 # --------------------------------------------------------------------------- #
 def render_report_text(state: dict) -> str:
     """Render the execution report, choosing a shape from the work products."""
+    # Casual conversation: the reply itself IS the answer.
+    if state.get("chat_response"):
+        return state["chat_response"]
     inventory = state.get("local_data_inventory") or {}
     lookup = state.get("mitoverse_lookup") or {}
     storage = state.get("storage_info") or {}
@@ -269,6 +272,7 @@ def build_summary(state: dict) -> dict[str, Any]:
     return {
         "run_id": state.get("run_id"),
         "intent": parsed.get("intent"),
+        "chat_response": state.get("chat_response"),
         "execution_report_path": state.get("execution_report_path"),
         "final_report": state.get("final_report"),
         "validation_success": validation.get("success"),

@@ -16,6 +16,7 @@ from __future__ import annotations
 from langgraph.graph import END, START, StateGraph
 
 from mito_data_agent.agents.catalog_agent import catalog_agent
+from mito_data_agent.agents.chat_agent import chat_agent
 from mito_data_agent.agents.dataset_inspector_agent import dataset_inspector_agent
 from mito_data_agent.agents.input_parser_agent import input_parser_agent
 from mito_data_agent.agents.inventory_agent import inventory_agent
@@ -49,6 +50,7 @@ _AGENT_NODES = {
     "inventory_agent": inventory_agent,
     "catalog_agent": catalog_agent,
     "storage_info_agent": storage_info_agent,
+    "chat_agent": chat_agent,
     "report_agent": report_agent,
 }
 

@@ -23,6 +23,7 @@ AGENT_CATALOG: dict[str, str] = {
     "inventory_agent": "Scan the local data directory and list annotated volumes on disk.",
     "catalog_agent": "Check whether a volume already exists in the public MitoVerse catalog (read-only).",
     "storage_info_agent": "Answer questions about WHERE the agent stores things (metadata store path, data-dir sidecars, outputs) and WHAT volumes have been recorded so far.",
+    "chat_agent": "Reply conversationally (ChatGPT-style) to greetings, small talk, 'what can you do', or any general/unrelated question. No parsing needed — route here for casual chat, then finish.",
     "report_agent": "Assemble the final report and write the execution report. Run last.",
 }
 
@@ -63,5 +64,6 @@ def progress_snapshot(state: MultiAgentState) -> dict[str, bool]:
         "local_data_inventory": not is_missing(state.get("local_data_inventory")),
         "mitoverse_lookup": not is_missing(state.get("mitoverse_lookup")),
         "storage_info": not is_missing(state.get("storage_info")),
+        "chat_response": not is_missing(state.get("chat_response")),
         "final_report": not is_missing(state.get("final_report")),
     }

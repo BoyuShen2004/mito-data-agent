@@ -117,6 +117,7 @@
     .avatar { width: 30px; height: 30px; border-radius: 8px; flex: none; display: grid; place-items: center;
       background: linear-gradient(135deg, var(--accent), #9b6bff); color: #fff; font-size: 16px; margin-top: 2px; }
     .assistant-body { flex: 1; min-width: 0; }
+    .chat-reply { font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; padding: 2px 0; }
 
     /* result blocks inside an assistant message */
     .block { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
@@ -303,7 +304,7 @@
       <button data-tab="run" class="active">Chat</button>
       <button data-tab="records">Records</button>
     </div>
-    <label class="switch" title="Show the supervisor + agent + component trace under each answer">
+    <label class="switch" title="Debug view: run details, raw report, and the step-by-step agent flow (supervisor decisions → agents → tool steps)">
       <input type="checkbox" id="traceToggle" /><span class="track"></span> Agent trace
     </label>
     <button class="btn-ghost" id="clearBtn" title="Delete everything under outputs/ (reports, artifacts, ledger)">Clear outputs</button>
@@ -586,38 +587,44 @@
   }
 
   /* ---------- result rendering ---------- */
+  // Two modes:
+  //  • Regular use  → the clean answer (chat reply / dataset cards / result text +
+  //    any warnings). What a normal user wants.
+  //  • Agent trace (debug) → run internals + raw report + step-by-step agent flow.
+  //    Everything inside `debugSection` is a .trace-block: shown only when the
+  //    header "Agent trace" switch is on.
   function resultNode(res) {
     const s = res.summary || {};
     const frag = document.createDocumentFragment();
 
-    const head = el("div", "block");
-    const pills = el("div", "pills");
-    pills.appendChild(el("span", "pill mono", "run " + esc(res.run_id || "?")));
-    if (s.intent) pills.appendChild(el("span", "pill", "intent: " + esc(s.intent)));
-    if (s.validation_success != null) {
-      const ok = s.validation_success;
-      pills.appendChild(el("span", "pill " + (ok ? "ok" : "warn"), (ok ? "✓ " : "! ") + "validation " + (ok ? "passed" : (s.validation_status || "incomplete"))));
+    // Casual conversation: render the reply like a normal chat message.
+    if (s.chat_response) {
+      frag.appendChild(el("div", "chat-reply", esc(s.chat_response)));
+      frag.appendChild(debugSection(res));
+      return frag;
     }
-    pills.appendChild(el("span", "pill", s.real_write_performed ? "⚠ real write" : "dry-run only"));
-    head.appendChild(pills);
-    frag.appendChild(head);
 
     const datasets = s.recorded_datasets || [];
     if (datasets.length) {
       const c = el("div", "block");
-      c.appendChild(el("h3", null, `Recorded datasets (${datasets.length})`));
+      c.appendChild(el("h3", null, `Recorded ${datasets.length} dataset(s)`));
       datasets.forEach((d) => c.appendChild(datasetCard(d)));
       frag.appendChild(c);
-    }
-
-    const arts = artifactRows(s);
-    if (arts.length) {
+      const arts = artifactRows(s);
+      if (arts.length) {
+        const a = el("div", "block");
+        a.appendChild(el("h3", null, "Dry-run artifacts"));
+        arts.forEach((r) => a.appendChild(r));
+        frag.appendChild(a);
+      }
+    } else {
+      // No structured result — the report text is the human-readable answer.
       const c = el("div", "block");
-      c.appendChild(el("h3", null, "Dry-run artifacts"));
-      arts.forEach((r) => c.appendChild(r));
+      c.appendChild(el("pre", "report", esc(res.report_text || "No result produced.")));
       frag.appendChild(c);
     }
 
+    // Problems the user should always see (not hidden behind the debug toggle).
     const notes = [];
     (s.errors || []).forEach((e) => notes.push(el("div", "msg-line err", `[${esc(e.agent || "?")}] ${esc(e.message)}`)));
     (s.warnings || []).forEach((w) => notes.push(el("div", "msg-line warn", `[${esc(w.agent || "?")}] ${esc(w.message)}`)));
@@ -628,23 +635,45 @@
       frag.appendChild(c);
     }
 
-    // Conflicts are auto-resolved in favour of the file — shown as info, not errors.
+    frag.appendChild(debugSection(res));
+    return frag;
+  }
+
+  // Debug / agent-trace view: run details + conflicts + raw report + agent flow.
+  function debugSection(res) {
+    const s = res.summary || {};
+    const wrap = el("div", "trace-block");
+
+    const info = el("div", "block");
+    info.appendChild(el("h3", null, "Run details"));
+    const pills = el("div", "pills");
+    pills.appendChild(el("span", "pill mono", "run " + esc(res.run_id || s.run_id || "?")));
+    if (s.intent) pills.appendChild(el("span", "pill", "intent: " + esc(s.intent)));
+    if (s.validation_success != null) {
+      const ok = s.validation_success;
+      pills.appendChild(el("span", "pill " + (ok ? "ok" : "warn"),
+        (ok ? "✓ " : "! ") + "validation " + (ok ? "passed" : (s.validation_status || "incomplete"))));
+    }
+    pills.appendChild(el("span", "pill", s.real_write_performed ? "⚠ real write" : "dry-run only"));
+    info.appendChild(pills);
     const conflicts = s.conflicts || [];
     if (conflicts.length) {
-      const c = el("div", "block");
-      c.appendChild(el("h3", null, `Conflicts auto-resolved · file wins (${conflicts.length})`));
-      conflicts.forEach((cf) => c.appendChild(el("div", "msg-line info", `${esc(cf.message)}`)));
-      frag.appendChild(c);
+      info.appendChild(el("div", "hint", `Conflicts auto-resolved · file wins (${conflicts.length}):`));
+      conflicts.forEach((cf) => info.appendChild(el("div", "msg-line info", esc(cf.message))));
+    }
+    wrap.appendChild(info);
+
+    if (res.report_text) {
+      const rep = el("details");
+      rep.appendChild(el("summary", null, "Execution report (raw)"));
+      const rbody = el("div", "body");
+      rbody.appendChild(el("pre", "report", esc(res.report_text)));
+      rep.appendChild(rbody);
+      wrap.appendChild(rep);
     }
 
-    const rep = el("details"); rep.open = true;
-    rep.appendChild(el("summary", null, "Execution report"));
-    const rbody = el("div", "body");
-    rbody.appendChild(el("pre", "report", esc(res.report_text || "")));
-    rep.appendChild(rbody); frag.appendChild(rep);
-
-    frag.appendChild(traceEl(s));
-    return frag;
+    wrap.appendChild(traceEl(s));
+    return wrap;
   }
 
   function datasetCard(d) {
@@ -703,8 +732,8 @@
   function traceEl(s) {
     const decisions = s.supervisor_decisions || [];
     const agents = s.agent_trace || [];
-    const det = el("details", "trace-block"); det.open = true;
-    det.appendChild(el("summary", null, `Agent trace — ${decisions.length} step(s)`));
+    const det = el("details"); det.open = true;
+    det.appendChild(el("summary", null, `Agent flow — ${decisions.length} step(s)`));
     const body = el("div", "body");
     const tl = el("div", "timeline");
 

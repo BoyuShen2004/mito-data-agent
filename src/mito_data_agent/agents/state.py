@@ -24,6 +24,7 @@ WORKER_AGENTS: list[str] = [
     "inventory_agent",
     "catalog_agent",
     "storage_info_agent",
+    "chat_agent",
     "report_agent",
 ]
 
@@ -79,6 +80,10 @@ class MultiAgentState(TypedDict, total=False):
     mitoverse_lookup: Optional[dict]
     mitoverse_search: Optional[dict]
     storage_info: Optional[dict]
+
+    # Conversational reply for casual/general chat (ChatGPT-style), when the
+    # request isn't a data task.
+    chat_response: Optional[str]
 
     final_report: Optional[str]
     execution_report_path: Optional[str]

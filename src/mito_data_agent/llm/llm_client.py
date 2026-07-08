@@ -67,6 +67,45 @@ class LLMClient:
         )
         return self._extract_json(completion.choices[0].message.content or "")
 
+    def complete_text(self, system_prompt: str, user_prompt: str) -> str:
+        """Return a free-form text reply from the LLM (used for conversational chat)."""
+        apply_settings_to_config(load_settings())
+        backend = self._resolve_backend()
+        if backend == "openai":
+            return self._complete_openai_text(system_prompt, user_prompt)
+        if backend == "codex_cli":
+            return self._complete_codex_text(system_prompt, user_prompt)
+        raise RuntimeError(f"Unsupported LLM backend: {backend}")
+
+    def _complete_openai_text(self, system_prompt: str, user_prompt: str) -> str:
+        from openai import OpenAI
+
+        settings = load_settings()
+        client = OpenAI(api_key=self._get_openai_api_key())
+        completion = client.chat.completions.create(
+            model=settings.llm_model or config.LLM_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+        return completion.choices[0].message.content or ""
+
+    def _complete_codex_text(self, system_prompt: str, user_prompt: str) -> str:
+        codex = self._get_codex_path()
+        if codex is None:
+            raise RuntimeError("Codex CLI not found. Run `codex login` or set it in the Web UI.")
+        prompt = f"{system_prompt}\n\nUser: {user_prompt}\n\nReply:"
+        result = subprocess.run(
+            [codex, "exec", "--full-auto", prompt],
+            capture_output=True,
+            text=True,
+            timeout=240,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"Codex CLI call failed. stderr: {result.stderr.strip()}")
+        return result.stdout.strip()
+
     def supports_tool_calling(self) -> bool:
         """True when the active backend can do native function/tool calling (OpenAI)."""
         apply_settings_to_config(load_settings())

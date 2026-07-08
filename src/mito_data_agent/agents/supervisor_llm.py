@@ -73,12 +73,31 @@ def _build_context(state: MultiAgentState) -> dict[str, Any]:
     validation = state.get("schema_validation") or {}
     return {
         "user_prompt": state.get("user_prompt", ""),
+        "chat_history": state.get("chat_history") or [],
         "parsed_intent": parsed.get("intent"),
         "progress": progress_snapshot(state),
         "validation_status": validation.get("status"),
         "allowed": ALLOWED_NEXT_AGENTS,
         "agents": AGENT_CATALOG,
     }
+
+
+# Recent conversation turns shown to the supervisor so follow-up messages ("do
+# that", "and vol2?") are routed with context. Kept short to bound tokens.
+_SUPERVISOR_HISTORY_TURNS = 6
+
+
+def _render_history(history: list[dict[str, Any]]) -> str:
+    """One-line-per-turn transcript of the most recent turns (empty if none)."""
+    turns = [
+        t
+        for t in history
+        if (t or {}).get("role") in ("user", "assistant") and ((t or {}).get("content") or "").strip()
+    ][-_SUPERVISOR_HISTORY_TURNS:]
+    if not turns:
+        return ""
+    lines = [f"{t['role']}: {str(t['content']).strip()}" for t in turns]
+    return "Conversation so far (for context):\n" + "\n".join(lines) + "\n\n"
 
 
 _FINISH_DESCRIPTION = (
@@ -124,6 +143,7 @@ def _build_user_prompt(context: dict[str, Any]) -> str:
     """Render the routing context into a user prompt string for the LLM."""
     catalog = "\n".join(f"- {name}: {desc}" for name, desc in context["agents"].items())
     return (
+        f"{_render_history(context.get('chat_history') or [])}"
         f"User request:\n{context['user_prompt']}\n\n"
         f"Parsed intent: {context['parsed_intent']}\n"
         f"Validation status: {context['validation_status']}\n\n"

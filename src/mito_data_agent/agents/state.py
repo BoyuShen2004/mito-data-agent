@@ -46,6 +46,12 @@ class MultiAgentState(TypedDict, total=False):
     run_id: str
     user_prompt: str
 
+    # Prior turns of the same conversation, oldest-first, each
+    # ``{"role": "user"|"assistant", "content": <text>}``. Empty on the first
+    # turn. Gives the chat agent (and supervisor) multi-turn memory so follow-up
+    # messages are answered in context rather than in isolation.
+    chat_history: list[dict]
+
     # Supervisor routing bookkeeping.
     current_agent: Optional[str]
     next_agent: Optional[str]

@@ -30,11 +30,18 @@ def reset_graph() -> None:
     _GRAPH = None
 
 
-def initial_multi_agent_state(user_prompt: str) -> MultiAgentState:
-    """Build the initial multi-agent state."""
+def initial_multi_agent_state(
+    user_prompt: str, history: list[dict] | None = None
+) -> MultiAgentState:
+    """Build the initial multi-agent state.
+
+    ``history`` carries prior turns of the same conversation (oldest-first) so
+    the workflow — the chat agent especially — has multi-turn memory.
+    """
     return {
         "run_id": make_run_id(),
         "user_prompt": user_prompt,
+        "chat_history": list(history or []),
         "current_agent": None,
         "next_agent": None,
         "supervisor_reason": None,
@@ -118,6 +125,7 @@ def print_trace(state: MultiAgentState) -> None:
 def run_multi_agent(
     user_prompt: str,
     *,
+    history: list[dict] | None = None,
     trace: bool = False,
     print_trace_output: bool = True,
     policy: SupervisorPolicy | None = None,
@@ -126,13 +134,14 @@ def run_multi_agent(
 
     Args:
         user_prompt: the free-form user request.
+        history: prior conversation turns (oldest-first) for multi-turn context.
         trace: when True, collect and (optionally) print the trace.
         print_trace_output: print the trace to stdout when ``trace`` is set.
         policy: optional supervisor policy override (compiles a fresh graph).
     """
     ensure_output_dirs()
     graph = build_multi_agent_graph(policy) if policy is not None else _get_graph()
-    state = initial_multi_agent_state(user_prompt)
+    state = initial_multi_agent_state(user_prompt, history)
 
     result = graph.invoke(state, config={"recursion_limit": _RECURSION_LIMIT})
 
@@ -146,18 +155,18 @@ def run_multi_agent(
     }
 
 
-def stream_multi_agent(user_prompt: str):
+def stream_multi_agent(user_prompt: str, history: list[dict] | None = None):
     """Run the workflow, yielding trace events *as each step completes*.
 
     Yields ``("step", {"supervisor_decisions": [...], "agent_trace": [...]})`` with
     only the newly-added entries after every graph super-step, then a final
     ``("final", {run_id, report_text, summary, trace})`` once the run is done.
     Lets a UI show the supervisor/agent/component trace live instead of only at
-    the end.
+    the end. ``history`` carries prior conversation turns for multi-turn context.
     """
     ensure_output_dirs()
     graph = _get_graph()
-    state = initial_multi_agent_state(user_prompt)
+    state = initial_multi_agent_state(user_prompt, history)
 
     seen_sup = 0
     seen_agent = 0

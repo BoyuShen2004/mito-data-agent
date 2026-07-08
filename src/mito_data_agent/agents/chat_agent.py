@@ -15,15 +15,19 @@ from mito_data_agent.tools.chat_reply import generate_chat_reply
 def chat_agent(state: MultiAgentState) -> dict:
     """Generate a conversational reply to the user's message."""
     prompt = state.get("user_prompt", "") or ""
+    history = state.get("chat_history") or []
     try:
-        reply = generate_chat_reply(prompt)
+        reply = generate_chat_reply(prompt, history)
+        turns = len(history)
         return finalize(
             state,
             "chat_agent",
             "success",
             {"chat_response": reply, "final_report": reply},
-            "Replied conversationally.",
-            input_keys=["user_prompt"],
+            f"Replied conversationally ({turns} prior turn(s) of context)."
+            if turns
+            else "Replied conversationally.",
+            input_keys=["user_prompt", "chat_history"],
         )
     except Exception as exc:  # noqa: BLE001 — keep the run alive
         reply = f"Sorry — I couldn't generate a reply right now ({exc})."

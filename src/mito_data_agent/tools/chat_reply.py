@@ -24,6 +24,12 @@ conversationally — do not force the conversation toward MitoVerse.
 """
 
 
-def generate_chat_reply(user_prompt: str) -> str:
-    """Return a natural-language reply to a casual/general user message."""
-    return get_llm_client().complete_text(_SYSTEM_PROMPT, user_prompt).strip()
+def generate_chat_reply(
+    user_prompt: str, history: list[dict[str, str]] | None = None
+) -> str:
+    """Return a natural-language reply to a casual/general user message.
+
+    ``history`` is the prior turns of the conversation (oldest-first), so the
+    reply follows the thread instead of answering each message in isolation.
+    """
+    return get_llm_client().complete_text(_SYSTEM_PROMPT, user_prompt, history).strip()

@@ -78,8 +78,17 @@ app = FastAPI(
 # --------------------------------------------------------------------------- #
 # Request / response models
 # --------------------------------------------------------------------------- #
+class ChatTurn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
+
 class RunRequest(BaseModel):
     prompt: str = Field(..., min_length=1, description="Free-form user request")
+    history: list[ChatTurn] = Field(
+        default_factory=list,
+        description="Prior turns of the same conversation (oldest-first) for multi-turn context.",
+    )
 
 
 class SettingsUpdate(BaseModel):
@@ -137,8 +146,9 @@ def run(req: RunRequest) -> dict:
     prompt = req.prompt.strip()
     if not prompt:
         raise HTTPException(status_code=400, detail="Prompt must not be empty.")
+    history = [turn.model_dump() for turn in req.history]
     try:
-        result = run_multi_agent(prompt, trace=True, print_trace_output=False)
+        result = run_multi_agent(prompt, history=history, trace=True, print_trace_output=False)
     except Exception as exc:  # surface the failure to the UI instead of a 500 blob
         raise HTTPException(status_code=500, detail=f"Run failed: {exc}") from exc
 
@@ -163,10 +173,11 @@ def run_stream(req: RunRequest) -> StreamingResponse:
     prompt = req.prompt.strip()
     if not prompt:
         raise HTTPException(status_code=400, detail="Prompt must not be empty.")
+    history = [turn.model_dump() for turn in req.history]
 
     def gen():
         try:
-            for kind, payload in stream_multi_agent(prompt):
+            for kind, payload in stream_multi_agent(prompt, history):
                 yield json.dumps({"type": kind, **payload}, default=str) + "\n"
         except Exception as exc:  # surface failures inline in the stream
             yield json.dumps({"type": "error", "detail": f"Run failed: {exc}"}) + "\n"

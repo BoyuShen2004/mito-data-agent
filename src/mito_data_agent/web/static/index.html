@@ -541,9 +541,25 @@
     return { row, body };
   }
 
+  // Prior turns as plain {role, content} text so the run has multi-turn memory.
+  // Assistant turns collapse to their chat reply or report text.
+  function historyForRun() {
+    const out = [];
+    for (const t of turns) {
+      if (t.role === "user" && t.text) out.push({ role: "user", content: t.text });
+      else if (t.role === "assistant") {
+        const r = t.result || {};
+        const content = (r.summary && r.summary.chat_response) || r.report_text || "";
+        if (content) out.push({ role: "assistant", content });
+      }
+    }
+    return out;
+  }
+
   async function runWorkflow() {
     const prompt = promptEl.value.trim();
     if (!prompt) return;
+    const history = historyForRun();  // capture BEFORE adding the current turn
     addUser(prompt);
     turns.push({ role: "user", text: prompt });
     promptEl.value = ""; autoGrow(); syncSend();
@@ -552,7 +568,7 @@
     $("#runBtn").disabled = true;
     try {
       const resp = await fetch("/api/run/stream", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt }),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt, history }),
       });
       if (!resp.ok || !resp.body) {
         let detail = resp.statusText;

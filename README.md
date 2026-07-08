@@ -66,6 +66,10 @@ supervisor_agent  ← ───────────────────�
 
 ## What the agent does
 
+- **Chats conversationally with memory.** For greetings, small talk, or general
+  questions it replies like a normal assistant instead of forcing a data task —
+  and each reply now sees the **prior turns of the conversation** (multi-turn
+  context), so follow-ups ("remind me what you said") work.
 - **Parses free-form prompts** into structured metadata (LLM), including
   **multiple datasets in one prompt** (each recorded separately).
 - **File info wins over the prompt.** When the prompt and the actual TIFF disagree
@@ -162,6 +166,8 @@ python -m mito_data_agent web --port 8000     # pick a port (auto-falls-back if 
 A single-page UI (FastAPI backend, no build step). A left **chats sidebar** keeps
 your **previous conversations** (persisted under `outputs/chats/`, newest first) —
 click one to reopen it, use **＋ New chat** to start fresh, or hover to delete.
+Each message is sent **with the earlier turns of that conversation**, so the
+agent answers follow-ups in context (multi-turn memory) rather than in isolation.
 Two views:
 
 - **Run** — a ChatGPT-style prompt composer with one-click example prompts. While

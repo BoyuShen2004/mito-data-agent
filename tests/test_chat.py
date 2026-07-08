@@ -16,7 +16,7 @@ from mito_data_agent.agents.runner import run_multi_agent
 def mock_chat_reply(monkeypatch):
     monkeypatch.setattr(
         "mito_data_agent.agents.chat_agent.generate_chat_reply",
-        lambda prompt: "Hi! I can chat, and also help record MitoVerse metadata.",
+        lambda prompt, history=None: "Hi! I can chat, and also help record MitoVerse metadata.",
     )
 
 
@@ -34,6 +34,31 @@ def test_casual_message_gets_a_conversational_reply():
     # The report text is the conversational reply itself.
     from mito_data_agent.tools.reporting import render_report_text
     assert render_report_text(raw) == raw["chat_response"]
+
+
+def test_chat_reply_receives_prior_conversation(monkeypatch):
+    """Follow-up chat messages carry the earlier turns for multi-turn memory."""
+    seen = {}
+
+    def capture(prompt, history=None):
+        seen["prompt"] = prompt
+        seen["history"] = history
+        return "Sure — as I mentioned, I record MitoVerse metadata."
+
+    monkeypatch.setattr(
+        "mito_data_agent.agents.chat_agent.generate_chat_reply", capture
+    )
+
+    history = [
+        {"role": "user", "content": "hello, what can you do?"},
+        {"role": "assistant", "content": "I can chat and record MitoVerse metadata."},
+    ]
+    result = run_multi_agent("thanks! remind me what you said?", history=history)
+
+    assert "chat_agent" in executed_route(result["raw"])
+    # The prior turns reached the chat reply tool unchanged.
+    assert seen["history"] == history
+    assert seen["prompt"].startswith("thanks!")
 
 
 def test_task_message_still_runs_the_task_chain():

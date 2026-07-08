@@ -19,6 +19,33 @@ from mito_data_agent.utils.paths import normalize_stored_path
 from mito_data_agent.utils.text import parse_resolution_string, parse_shape_string
 
 
+# How many recent turns of conversation history to feed the LLM. Bounds token
+# usage while keeping enough context for natural follow-ups.
+_MAX_HISTORY_TURNS = 20
+
+
+def _sanitize_history(history: list[dict[str, str]] | None) -> list[dict[str, str]]:
+    """Keep only well-formed, non-empty user/assistant turns (most recent last)."""
+    out: list[dict[str, str]] = []
+    for turn in history or []:
+        role = (turn or {}).get("role")
+        content = ((turn or {}).get("content") or "").strip()
+        if role in ("user", "assistant") and content:
+            out.append({"role": role, "content": content})
+    return out[-_MAX_HISTORY_TURNS:]
+
+
+def _render_history_transcript(history: list[dict[str, str]] | None) -> str:
+    """Flatten history into a plain-text transcript for text-only backends (codex)."""
+    turns = _sanitize_history(history)
+    if not turns:
+        return ""
+    lines = [
+        f"{'User' if t['role'] == 'user' else 'Assistant'}: {t['content']}" for t in turns
+    ]
+    return "Conversation so far:\n" + "\n".join(lines) + "\n\n"
+
+
 class LLMClient:
     """Parse free-form user prompts into ParsedUserRequest via LLM."""
 
@@ -67,35 +94,51 @@ class LLMClient:
         )
         return self._extract_json(completion.choices[0].message.content or "")
 
-    def complete_text(self, system_prompt: str, user_prompt: str) -> str:
-        """Return a free-form text reply from the LLM (used for conversational chat)."""
+    def complete_text(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        history: list[dict[str, str]] | None = None,
+    ) -> str:
+        """Return a free-form text reply from the LLM (used for conversational chat).
+
+        ``history`` is prior conversation turns (oldest-first,
+        ``{"role": "user"|"assistant", "content": str}``) that give the reply
+        multi-turn context. It is placed between the system prompt and the new
+        user message.
+        """
         apply_settings_to_config(load_settings())
         backend = self._resolve_backend()
         if backend == "openai":
-            return self._complete_openai_text(system_prompt, user_prompt)
+            return self._complete_openai_text(system_prompt, user_prompt, history)
         if backend == "codex_cli":
-            return self._complete_codex_text(system_prompt, user_prompt)
+            return self._complete_codex_text(system_prompt, user_prompt, history)
         raise RuntimeError(f"Unsupported LLM backend: {backend}")
 
-    def _complete_openai_text(self, system_prompt: str, user_prompt: str) -> str:
+    def _complete_openai_text(
+        self, system_prompt: str, user_prompt: str, history: list[dict[str, str]] | None = None
+    ) -> str:
         from openai import OpenAI
 
         settings = load_settings()
         client = OpenAI(api_key=self._get_openai_api_key())
+        messages = [{"role": "system", "content": system_prompt}]
+        messages.extend(_sanitize_history(history))
+        messages.append({"role": "user", "content": user_prompt})
         completion = client.chat.completions.create(
             model=settings.llm_model or config.LLM_MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
+            messages=messages,
         )
         return completion.choices[0].message.content or ""
 
-    def _complete_codex_text(self, system_prompt: str, user_prompt: str) -> str:
+    def _complete_codex_text(
+        self, system_prompt: str, user_prompt: str, history: list[dict[str, str]] | None = None
+    ) -> str:
         codex = self._get_codex_path()
         if codex is None:
             raise RuntimeError("Codex CLI not found. Run `codex login` or set it in the Web UI.")
-        prompt = f"{system_prompt}\n\nUser: {user_prompt}\n\nReply:"
+        transcript = _render_history_transcript(history)
+        prompt = f"{system_prompt}\n\n{transcript}User: {user_prompt}\n\nReply:"
         result = subprocess.run(
             [codex, "exec", "--full-auto", prompt],
             capture_output=True,

@@ -1,0 +1,17 @@
+# Conda environment for Mito Data Agent (backend + frontend toolchain).
+#
+# Create/update from the repo root:
+#     conda env create -f environment.yml
+#     conda activate mito-data-agent
+#
+# Python packages are installed via pip from requirements.txt so there is a
+# single source of truth for backend dependencies.
+name: mito-data-agent
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - nodejs>=18       # for the React/Vite frontend (npm)
+  - pip
+  - pip:
+      - -r requirements.txt

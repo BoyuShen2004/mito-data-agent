@@ -47,20 +47,31 @@ This app runs as **two processes** during development:
 All commands below are run from the **repo root**
 (`/projects/weilab/shenb/mito_data_agent`) — you do **not** need to `cd backend`.
 
-Prerequisites: Python ≥ 3.11 and Node ≥ 18.
+Prerequisite: [conda](https://docs.conda.io/en/latest/miniconda.html)
+(Miniconda/Anaconda). The environment provides Python 3.11, Node, and all
+backend dependencies.
 
 ```bash
-# 1. Configure (env file lives at the repo root)
+# 1. Create & activate the conda environment (Python 3.11 + Node + backend deps)
+conda env create -f environment.yml
+conda activate mito-data-agent
+
+# 2. Configure (env file lives at the repo root)
 cp .env.example .env                        # then edit MITO_DATA_ROOT
 
-# 2. Backend: install, migrate, create a manager login
-pip install -r requirements.txt             # Django, DRF, corsheaders, numpy, tifffile
+# 3. Backend: migrate + create a manager login
 python backend/manage.py migrate
 python backend/manage.py createsuperuser     # a superuser is treated as a manager
 
-# 3. Frontend: install
+# 4. Frontend: install JS dependencies
 npm install --prefix frontend
 ```
+
+> To update the environment later after dependencies change:
+> `conda env update -f environment.yml --prune`.
+>
+> **Prefer plain pip / venv instead of conda?** Use Python ≥ 3.11 and Node ≥ 18,
+> then replace step 1 with `pip install -r requirements.txt`.
 
 Then start **both** servers (use two terminals, or add `&` to the first):
 

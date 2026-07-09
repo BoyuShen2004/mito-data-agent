@@ -31,33 +31,77 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="login-wrap">
-      <div className="card">
-        <h2>🧬 Mito Data Agent</h2>
-        <p className="muted">Annotation task management</p>
-        {error && <div className="error">{error}</div>}
-        <form onSubmit={onSubmit}>
-          <label className="field">
-            <span>Username</span>
-            <input
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              autoFocus
-            />
-          </label>
-          <label className="field">
-            <span>Password</span>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </label>
-          <button type="submit" disabled={busy}>
-            {busy ? "Signing in…" : "Sign in"}
-          </button>
-        </form>
-      </div>
+    <div className="login-page">
+      <aside className="login-brand">
+        <div className="brand-mark">🧬 Mito Data Agent</div>
+        <div className="brand-hero">
+          <h1>
+            Mitochondria annotation,
+            <br />
+            organized end to end.
+          </h1>
+          <p>
+            Register image volumes, split them into frame-based tasks, assign
+            annotators, and review submissions — with progress and payment
+            tracked automatically.
+          </p>
+        </div>
+        <ul className="brand-features">
+          <li>
+            <span className="tick">✓</span> Frame-based task splitting &amp;
+            rule-based assignment
+          </li>
+          <li>
+            <span className="tick">✓</span> Submission review with built-in QC
+          </li>
+          <li>
+            <span className="tick">✓</span> Live progress, workload &amp;
+            payment summaries
+          </li>
+        </ul>
+      </aside>
+
+      <main className="login-form-panel">
+        <div className="login-card">
+          <div className="login-mobile-brand">🧬 Mito Data Agent</div>
+          <h2>Welcome back</h2>
+          <p className="subtitle">Sign in to your workspace</p>
+
+          {error && <div className="error">{error}</div>}
+
+          <form onSubmit={onSubmit}>
+            <label className="field">
+              <span>Username</span>
+              <input
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoComplete="username"
+                placeholder="you@lab"
+                autoFocus
+              />
+            </label>
+            <label className="field">
+              <span>Password</span>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+                placeholder="••••••••"
+              />
+            </label>
+            <button type="submit" className="btn-block" disabled={busy}>
+              {busy ? "Signing in…" : "Sign in"}
+            </button>
+          </form>
+
+          <div className="login-hint">
+            Demo logins (after seeding): manager <code>manager</code> /{" "}
+            <code>demo12345</code> · annotator <code>alice</code> /{" "}
+            <code>demo12345</code>
+          </div>
+        </div>
+      </main>
     </div>
   );
 }

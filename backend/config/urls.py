@@ -10,6 +10,7 @@ from django.contrib import admin
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from .views import index
 from accounts.api import LoginView, LogoutView, MeView
 from agents.api import (
     AgentPlanApproveView,
@@ -37,6 +38,8 @@ router = DefaultRouter()
 router.register("projects", ProjectViewSet, basename="project")
 
 urlpatterns = [
+    # Friendly landing page (the real UI is the React app on :5173).
+    path("", index, name="index"),
     path("admin/", admin.site.urls),
     # --- Auth --------------------------------------------------------------
     path("api/auth/login/", LoginView.as_view(), name="api-login"),

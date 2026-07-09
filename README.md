@@ -28,49 +28,72 @@ mito_data_agent/
 └── docs/
 ```
 
-## Data storage
+## Two servers (read this first)
 
-Large image data is **never** stored in the database. Set `MITO_DATA_ROOT` to a
-directory on your HPC/lab machine; the DB stores only paths (relative to that
-root) for image volumes, optional initial labels, submitted labels, and future
-chunks/predictions/exports.
+This app runs as **two processes** during development:
 
-## Backend — setup & run
+| Process | URL | What it is |
+| ------- | --- | ---------- |
+| **Frontend** (React/Vite) | **http://localhost:5173** | 👈 **Open this** — the actual app |
+| **Backend** (Django/DRF)  | http://127.0.0.1:8000 | JSON API + `/admin/` only |
+
+> Opening **http://127.0.0.1:8000/** in a browser is **not** the app — it's the
+> API server. It shows a small landing page pointing you to the UI. The user
+> interface lives at **http://localhost:5173**. You need **both** servers
+> running: the frontend calls the backend's API.
+
+## Quick start
+
+All commands below are run from the **repo root**
+(`/projects/weilab/shenb/mito_data_agent`) — you do **not** need to `cd backend`.
+
+Prerequisites: Python ≥ 3.11 and Node ≥ 18.
 
 ```bash
-cp .env.example .env                      # at the repo root; then edit MITO_DATA_ROOT etc.
-cd backend
-pip install -r requirements.txt          # Django, DRF, corsheaders, numpy, tifffile
-python manage.py migrate
-python manage.py createsuperuser          # a superuser is treated as a manager
-python manage.py runserver                # http://127.0.0.1:8000
+# 1. Configure (env file lives at the repo root)
+cp .env.example .env                        # then edit MITO_DATA_ROOT
+
+# 2. Backend: install, migrate, create a manager login
+pip install -r requirements.txt             # Django, DRF, corsheaders, numpy, tifffile
+python backend/manage.py migrate
+python backend/manage.py createsuperuser     # a superuser is treated as a manager
+
+# 3. Frontend: install
+npm install --prefix frontend
 ```
 
-Seed a demo project/user/volume for manual testing:
+Then start **both** servers (use two terminals, or add `&` to the first):
 
 ```bash
-python manage.py shell < scripts/seed_demo.py
+# Terminal 1 — backend API on http://127.0.0.1:8000
+python backend/manage.py runserver
+
+# Terminal 2 — frontend UI on http://localhost:5173   ← open this in your browser
+npm run dev --prefix frontend
+```
+
+Optionally seed a demo project/user/volume for a ready-to-click walkthrough:
+
+```bash
+python backend/manage.py shell < backend/scripts/seed_demo.py
 # creates: manager/demo12345 (manager) and alice/demo12345 (annotator)
 ```
 
-### Key settings (`config/settings.py`)
+### Configuration
 
-- `MITO_DATA_ROOT` — root for all volume/label/submission files.
-- `MITO_ALLOWED_LABEL_EXTENSIONS` — allowed uploaded-label extensions (QC).
+`.env` (copied from `.env.example` at the repo root) drives the backend:
+
+- `MITO_DATA_ROOT` — root dir for all volume/label/submission files (DB stores
+  only paths relative to this, **never** the large image data itself).
+- `DJANGO_DEBUG`, `DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS` — standard Django.
 - `MITO_DEFAULT_Z_STEP` — default frames per task when splitting.
-- `CORS_ALLOWED_ORIGINS` — defaults to the Vite dev server (`:5173`).
 
-## Frontend — setup & run
+Other settings live in `backend/config/settings.py`
+(`MITO_ALLOWED_LABEL_EXTENSIONS`, `CORS_ALLOWED_ORIGINS` — defaults to `:5173`).
 
-```bash
-cd frontend
-npm install
-npm run dev                               # http://localhost:5173
-```
-
-The dev server proxies `/api` and `/media` to the Django backend
+The Vite dev server proxies `/api` and `/media` to the backend
 (`http://127.0.0.1:8000` by default; override with `VITE_BACKEND_URL`).
-`npm run build` typechecks and produces a production bundle in `dist/`.
+`npm run build --prefix frontend` typechecks and produces a production bundle.
 
 ## MVP workflow
 
@@ -104,9 +127,9 @@ functions rather than reimplementing logic.
 ## Management commands
 
 ```bash
-python manage.py split_volume --volume-id 1 --z-step 16
-python manage.py assign_tasks --project-id 1
-python manage.py progress_report --project-id 1
+python backend/manage.py split_volume --volume-id 1 --z-step 16
+python backend/manage.py assign_tasks --project-id 1
+python backend/manage.py progress_report --project-id 1
 ```
 
 ## REST API (selected)
@@ -130,6 +153,11 @@ See `docs/api.md` for the full endpoint list.
 ## Tests
 
 ```bash
+# From the repo root (Django's test discovery needs the app labels here
+# because the apps live under backend/):
+python backend/manage.py test accounts projects volumes annotation payments agents
+
+# ...or simply run from the backend/ directory:
 cd backend && python manage.py test
 ```
 

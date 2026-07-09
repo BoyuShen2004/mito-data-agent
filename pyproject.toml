@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mito-data-agent"
+version = "0.3.0"
+description = "React + Django REST platform for managing mitochondria annotation projects, tasks, review, and payment"
+readme = "README.md"
+requires-python = ">=3.11"
+# Backend runtime dependencies (kept in sync with requirements.txt, which is
+# the install path documented in the README).
+dependencies = [
+    "Django>=5.0,<5.2",
+    "djangorestframework>=3.15",
+    "django-cors-headers>=4.3",
+    "python-dotenv",
+    "numpy",
+    "tifffile",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-django"]
+
+# This is a Django project run via `python backend/manage.py`, not an installable
+# library, so there are no importable top-level packages to build/install.
+[tool.setuptools]
+packages = []
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings"
+# The Django apps live under backend/, so add it to the path when running
+# pytest from the repo root.
+pythonpath = ["backend"]
+python_files = ["tests.py", "test_*.py", "*_tests.py"]

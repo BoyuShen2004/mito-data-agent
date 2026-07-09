@@ -1,22 +1,31 @@
-# Runtime agent outputs (hf_staging, reports, logs, cache, …)
-outputs/**
-!outputs/**/
-!outputs/**/.gitkeep
+# Django
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+# Local data root (image volumes, labels, submissions live outside git)
+mito_data_root/
 
 # Python
 __pycache__/
 *.py[cod]
 *.egg-info/
 .eggs/
-dist/
 build/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 
+# Node / frontend
+node_modules/
+frontend/dist/
+frontend/node_modules/
+dist/
+
 # Environment / secrets
 .env
 .env.*
+!.env.example
 *.pem
 
 # IDE

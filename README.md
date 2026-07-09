@@ -1,253 +1,141 @@
 # Mito Data Agent
 
-A **supervisor-based multi-agent LangGraph** system for prompt-driven MitoVerse
-dataset metadata recording and upload preparation.
+A web-based **mitochondria annotation task-management platform**. Managers
+create annotation projects, register image volumes, split them into
+frame-based tasks, assign work to annotators, and review submitted labels.
+The system tracks task status, project progress, annotator workload, and
+estimated payment.
 
-## What it is
-
-You describe your annotated mitochondria volume(s) in a free-form prompt. An
-**LLM parses** the prompt, an **LLM supervisor** routes the work step by step, and
-a set of specialized agents inspect the files, reconcile metadata against what the
-files actually contain, record everything to a queryable store, and prepare
-dry-run artifacts for Hugging Face / MitoVerse.
-
-It is **fully agentic**: both prompt understanding and routing are LLM-driven —
-there is no rule-based fallback in the product.
-
-> **All external writes are pseudo / dry-run.** No real Hugging Face upload or
-> GitHub push happens (`real_write_performed=False`). Local writes are limited to
-> `outputs/` and per-volume metadata sidecars in your data directory.
-
-## Architecture
-
-```
-START
-  ↓
-supervisor_agent  ← ─────────────────────────┐
-  ↓ (LLM decides the next agent each turn)    │
-  ├── input_parser_agent  ────────────────────┤
-  ├── dataset_inspector_agent  ───────────────┤
-  ├── observation_agent  ─────────────────────┤
-  ├── metadata_agent  ────────────────────────┤
-  ├── validation_agent  ──────────────────────┤
-  ├── metadata_record_agent  ─────────────────┤
-  ├── staging_agent  ─────────────────────────┤
-  ├── upload_planning_agent  ─────────────────┤
-  ├── website_update_agent  ──────────────────┤
-  ├── inventory_agent  ───────────────────────┤
-  ├── catalog_agent  ─────────────────────────┤
-  ├── storage_info_agent  ────────────────────┤
-  ├── report_agent  ──────────────────────────┘
-  └── finish → END
-```
-
-- **`START` → `supervisor_agent`** is the only entry point. Every agent is
-  dispatched by the supervisor and returns to it, so all work flows through one
-  uniform loop.
-- **Supervisor = LLM** (`agents/supervisor_llm.py`). Each turn it gets the user
-  request, the agent catalog, and a progress snapshot. On the **OpenAI** backend
-  the agents are exposed as callable tools and the LLM picks the next step via
-  **native function calling** (`tool_choice="required"`); on backends without
-  tool calling (**codex_cli**) it makes the same decision as JSON. On an LLM
-  outage/timeout a safety net keeps the run from crashing (retries, then advances
-  by data dependency).
-- **Agents are thin flow.** All output *formatting* lives in tools
-  (`tools/reporting.py`), not in the agent modules.
-- **Trace channels.** Every worker appends to `agent_trace`; every routing
-  decision appends to `supervisor_decisions`.
-
-### Design conventions
-
-- Agent modules (`agents/`) contain **flow only** — no hardcoded output formats.
-- Anything that formats, parses, reads files, or renders lives in **`tools/`**
-  (e.g. `tools/reporting.py` owns the report text, JSON, CLI summary).
-- All paths are config/helper-driven (`config.DEFAULT_DATA_DIR`,
-  `utils/paths.py`); no machine-specific absolute paths.
-
-## What the agent does
-
-- **Chats conversationally with memory.** For greetings, small talk, or general
-  questions it replies like a normal assistant instead of forcing a data task —
-  and each reply now sees the **prior turns of the conversation** (multi-turn
-  context), so follow-ups ("remind me what you said") work.
-- **Parses free-form prompts** into structured metadata (LLM), including
-  **multiple datasets in one prompt** (each recorded separately).
-- **File info wins over the prompt.** When the prompt and the actual TIFF disagree
-  on shape / # Mito / resolution, the file value is used and the conflict is
-  logged.
-- **Records metadata** to a persistent, queryable ledger
-  (`outputs/metadata_store/records.json`) **and** a sidecar next to the data
-  (`<data_dir>/<volume>.metadata.json`).
-- **Answers "where do you keep things?"** and **"what have I recorded?"**
-- **Prepares dry-run artifacts**: HF staging, MitoVerse update rows, pseudo
-  upload/push plans.
-- **Looks up** whether a volume already exists in the public MitoVerse catalog.
-
-## Install
-
-```bash
-cd mito_data_agent
-pip install -e ".[dev]"
-```
-
-## LLM setup (required)
-
-The agent needs an LLM backend for parsing and routing.
-
-**OpenAI (recommended — fast, reliable):**
-```bash
-export OPENAI_API_KEY=sk-...
-export MITO_AGENT_LLM_BACKEND=openai
-export MITO_AGENT_LLM_MODEL=gpt-4.1
-```
-
-**Codex CLI (local, no API key):**
-```bash
-codex login
-export MITO_AGENT_LLM_BACKEND=codex_cli
-```
-> Note: Codex makes one CLI call per routing step, so multi-step runs are slow;
-> OpenAI is much faster.
-
-## CLI
-
-Everything runs through `python -m mito_data_agent <command>`.
-
-| Command | Description |
-|---------|-------------|
-| `run` | Run the multi-agent workflow on a prompt |
-| `records` | Query the recorded-metadata store |
-| `web` | Serve the web UI |
-| `clear` | Delete generated artifacts under `outputs/` |
-
-### `run`
-
-```bash
-# Inline prompt, with the supervisor/agent trace
-python -m mito_data_agent run --prompt "Record metadata for vol1 ..." --trace
-
-# From a file
-python -m mito_data_agent run --prompt-file prompts/examples/upload_prompt.md
-```
-
-| Flag | Purpose |
-|------|---------|
-| `--prompt TEXT` / `--prompt-file PATH` | The user request |
-| `--trace` | Print the supervisor/agent trace |
-| `--llm-backend {openai,codex_cli}` / `--model NAME` | Override the LLM backend/model |
-| `--clear-outputs` / `-y` | Wipe `outputs/` first |
-
-The CLI summary lists **every** recorded dataset (not just the first), and each
-run writes `outputs/execution_reports/<run_id>.json`.
-
-### `records` — query the metadata store
-
-```bash
-python -m mito_data_agent records                  # list all recorded volumes
-python -m mito_data_agent records --volume vol1     # one record (+ version history)
-python -m mito_data_agent records --organism Human  # filter by a metadata field
-python -m mito_data_agent records --json            # raw JSON
-```
-
-Programmatic access:
-```python
-from mito_data_agent.tools.metadata_store import get_record, query_records
-get_record("vol1")
-query_records(organism="Human", modality="FIB-SEM")
-```
-
-### `web` — browser UI
-
-```bash
-python -m mito_data_agent web                 # http://127.0.0.1:7860
-python -m mito_data_agent web --port 8000     # pick a port (auto-falls-back if busy)
-```
-
-A single-page UI (FastAPI backend, no build step). A left **chats sidebar** keeps
-your **previous conversations** (persisted under `outputs/chats/`, newest first) —
-click one to reopen it, use **＋ New chat** to start fresh, or hover to delete.
-Each message is sent **with the earlier turns of that conversation**, so the
-agent answers follow-ups in context (multi-turn memory) rather than in isolation.
-Two views:
-
-- **Run** — a ChatGPT-style prompt composer with one-click example prompts. While
-  the workflow runs, a **live trace streams in** step-by-step (supervisor routing →
-  agent → component sub-steps) so you can watch the run progress; when it finishes
-  the answer is rendered: a status strip (run id / intent / validation),
-  **recorded-dataset cards** (with `file`-vs-`prompt` source tags), dry-run
-  artifacts, warnings, **conflicts auto-resolved in favour of the file**, the full
-  execution report, and the complete trace (toggle the header **Agent trace**
-  switch to keep it visible after the run). `⌘/Ctrl+Enter` runs the prompt.
-- **Records** — a searchable table over the metadata ledger.
-
-The gear icon opens **LLM settings** (backend / model / OpenAI key / Codex path),
-persisted to `outputs/logs/` so the UI works without env vars. Every run is
-dry-run — nothing is uploaded or pushed.
-
-### `clear`
-
-```bash
-python -m mito_data_agent clear -y   # wipe outputs/ (keeps folder structure)
-```
-
-Clears run artifacts and the recorded-metadata ledger. **Chat history
-(`outputs/chats/`) is preserved** — it is not part of the cleared set.
-
-## Project layout
+The app is a **React + Vite + TypeScript** single-page frontend talking to a
+**Django + Django REST Framework** backend over a token-authenticated JSON API.
+Django admin is retained for internal debugging only — it is not the
+user-facing UI.
 
 ```
 mito_data_agent/
-  pyproject.toml
-  prompts/
-    system/parse_user_request.md     # LLM system prompt (parsing)
-    examples/*.md                    # example user prompts
-  outputs/                           # generated at runtime (gitignored)
-    execution_reports/  metadata_store/  hf_staging/  mitoverse_updates/  logs/  cache/
-  src/mito_data_agent/
-    __main__.py                      # python -m mito_data_agent <command>
-    cli/                             # run, records, web, clear
-    web/                             # FastAPI backend + single-page UI (static/index.html)
-    agents/                          # the multi-agent workflow (FLOW only)
-      supervisor_llm.py              #   LLM router
-      supervisor_agent.py            #   supervisor node + safety net
-      *_agent.py                     #   worker agents (wrap tools)
-      graph.py / state.py / registry.py
-    tools/                           # all real work + formatting (deterministic)
-      reporting.py                   #   report text / JSON / CLI summary
-      record_datasets.py             #   collect + reconcile + record every dataset
-      metadata_store.py              #   persistent ledger + data-dir sidecars
-      reconcile_metadata.py          #   file-wins-over-prompt reconciliation
-      trace_details.py               #   per-agent trace sub-step formatting
-      parse_prompt*.py, inspect_files.py, merge_metadata.py, validate_metadata.py,
-      generate_*.py, pseudo_*.py, *_mitoverse_*.py, list_local_data.py, chat_store.py
-    llm/                             # LLM client + prompt templates + settings
-    tasks/                           # intent taxonomy for the parser
-    schemas.py, config.py, utils/
+├── backend/          Django + DRF API
+│   ├── manage.py
+│   ├── config/       settings, urls, wsgi/asgi
+│   ├── accounts/     users, roles, institutions, annotator profiles
+│   ├── projects/     annotation projects
+│   ├── volumes/      image volumes + frame-based task splitting
+│   ├── annotation/   tasks, submissions, review workflow
+│   ├── payments/     estimated payment records
+│   ├── agents/       AgentPlan placeholder (future LangGraph)
+│   └── core/         shared choices, storage, services, permissions
+├── frontend/         React + Vite + TypeScript SPA
+│   └── src/{api,components,pages,routes,types,hooks,auth}
+└── docs/
 ```
 
-## Metadata recording
+## Data storage
 
-Every run that produces metadata records it in two places:
+Large image data is **never** stored in the database. Set `MITO_DATA_ROOT` to a
+directory on your HPC/lab machine; the DB stores only paths (relative to that
+root) for image volumes, optional initial labels, submitted labels, and future
+chunks/predictions/exports.
 
-1. **Ledger** — `outputs/metadata_store/records.json` (accumulates across runs,
-   keeps a version history per volume; query with `records`).
-2. **Sidecar** — `<data_dir>/<volume>.metadata.json` next to the raw/label TIFFs
-   (`data_dir` = `config.DEFAULT_DATA_DIR`, default `../mito_data_agent_data`,
-   override with `MITO_AGENT_DATA_DIR`).
+## Backend — setup & run
 
-Multiple datasets in one prompt are all recorded. File-derived values override
-conflicting prompt values (with a warning).
+```bash
+cd backend
+pip install -r requirements.txt          # Django, DRF, corsheaders, numpy, tifffile
+cp .env.example .env                      # then edit MITO_DATA_ROOT etc.
+python manage.py migrate
+python manage.py createsuperuser          # a superuser is treated as a manager
+python manage.py runserver                # http://127.0.0.1:8000
+```
 
-## Expected outputs
+Seed a demo project/user/volume for manual testing:
 
-- `outputs/metadata_store/records.json` — the queryable ledger
-- `<data_dir>/<volume>.metadata.json` — per-volume sidecars
-- `outputs/execution_reports/<run_id>.json` — full run record (trace + report)
-- `outputs/hf_staging/<volume>/…`, `outputs/mitoverse_updates/<volume>_row.{json,csv}` — dry-run artifacts
+```bash
+python manage.py shell < scripts/seed_demo.py
+# creates: manager/demo12345 (manager) and alice/demo12345 (annotator)
+```
 
-## Dry-run only
+### Key settings (`config/settings.py`)
 
-The HF/GitHub tools (`tools/pseudo_upload_hf.py`, `tools/pseudo_push_github.py`)
-validate inputs and return a plan with `real_write_performed=false`. They do not
-call any external API. Swap them for real implementations when ready (see
-`ALLOW_REAL_*` flags in `config.py`).
+- `MITO_DATA_ROOT` — root for all volume/label/submission files.
+- `MITO_ALLOWED_LABEL_EXTENSIONS` — allowed uploaded-label extensions (QC).
+- `MITO_DEFAULT_Z_STEP` — default frames per task when splitting.
+- `CORS_ALLOWED_ORIGINS` — defaults to the Vite dev server (`:5173`).
+
+## Frontend — setup & run
+
+```bash
+cd frontend
+npm install
+npm run dev                               # http://localhost:5173
+```
+
+The dev server proxies `/api` and `/media` to the Django backend
+(`http://127.0.0.1:8000` by default; override with `VITE_BACKEND_URL`).
+`npm run build` typechecks and produces a production bundle in `dist/`.
+
+## MVP workflow
+
+1. Manager creates a project.
+2. Manager registers/uploads an image volume, recording its **label type**
+   (`none` / `prediction` / `proofread` / `partial`).
+3. Manager splits the volume into frame-based tasks. The task type is inferred
+   from the label type:
+   - `none` → `manual_annotation`
+   - `prediction` → `prediction_proofreading`
+   - `proofread` → `final_review`
+   - `partial` → `manual_annotation` (manager may override)
+4. Manager assigns tasks manually or via rule-based auto-assignment (respects
+   each annotator's `max_active_tasks`).
+5. Annotator logs in, views assigned tasks, downloads data externally, and
+   uploads a completed label file. Basic QC runs on submit.
+6. Manager reviews: **approve** (creates/updates a payment record), **reject**,
+   or **request revision**.
+7. Progress, workload, and estimated payment update accordingly.
+
+## Service layer
+
+Deterministic business logic lives in `<app>/services.py` (e.g.
+`create_project`, `register_volume`, `split_volume_by_frames`,
+`create_tasks_from_volume`, `assign_tasks_rule_based`, `submit_annotation`,
+`run_basic_qc`, `review_submission`, `calculate_project_progress`,
+`calculate_annotator_workload`, `calculate_payment_summary`). DRF views, admin
+actions, management commands, and future LangGraph tools all call these same
+functions rather than reimplementing logic.
+
+## Management commands
+
+```bash
+python manage.py split_volume --volume-id 1 --z-step 16
+python manage.py assign_tasks --project-id 1
+python manage.py progress_report --project-id 1
+```
+
+## REST API (selected)
+
+| Method | Path | Purpose |
+| ------ | ---- | ------- |
+| POST | `/api/auth/login/` | obtain token |
+| GET  | `/api/auth/me/` | current user |
+| GET/POST | `/api/projects/` | list / create projects |
+| GET | `/api/projects/<id>/summary/` | progress + workload + payment |
+| GET/POST | `/api/projects/<id>/volumes/` | list / register volumes |
+| POST | `/api/volumes/<id>/split/` | frame-based task splitting |
+| POST | `/api/projects/<id>/assign-tasks/` | rule-based assignment |
+| GET | `/api/my-tasks/` | annotator's assigned tasks |
+| POST | `/api/tasks/<id>/submit/` | upload completed label |
+| POST | `/api/submissions/<id>/review/` | approve / reject / request revision |
+| GET | `/api/payments/`, `/api/my-payments/` | payment records |
+
+See `docs/api.md` for the full endpoint list.
+
+## Tests
+
+```bash
+cd backend && python manage.py test
+```
+
+## Not yet implemented (deliberately out of scope)
+
+Online annotation editor / image viewer, nnU-Net / PyTorch-Connectomics
+integration, Slurm jobs, advanced QC, real payment processing, client billing,
+Hugging Face / MitoVerse publishing, and the full LangGraph multi-agent system.
+The `agents` app ships only an `AgentPlan` placeholder model + endpoints.

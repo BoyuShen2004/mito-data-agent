@@ -14,8 +14,8 @@ from dotenv import load_dotenv
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Load environment variables from a local .env file if present.
-load_dotenv(BASE_DIR / ".env")
+# Load environment variables from a local .env file at the repo root if present.
+load_dotenv(BASE_DIR.parent / ".env")
 
 
 def _env_bool(name: str, default: bool = False) -> bool:

@@ -38,9 +38,9 @@ chunks/predictions/exports.
 ## Backend — setup & run
 
 ```bash
+cp .env.example .env                      # at the repo root; then edit MITO_DATA_ROOT etc.
 cd backend
 pip install -r requirements.txt          # Django, DRF, corsheaders, numpy, tifffile
-cp .env.example .env                      # then edit MITO_DATA_ROOT etc.
 python manage.py migrate
 python manage.py createsuperuser          # a superuser is treated as a manager
 python manage.py runserver                # http://127.0.0.1:8000

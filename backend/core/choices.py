@@ -1,7 +1,8 @@
 """Shared enumerated choices used across apps.
 
 Centralising these keeps the label-state -> task-type mapping and the task
-lifecycle consistent between models, the service layer, and future agent tools.
+lifecycle consistent between models, the service layer, and the service-layer
+callers (DRF views, admin actions, management commands).
 """
 
 from django.db import models
@@ -91,13 +92,6 @@ class PaymentStatus(models.TextChoices):
     APPROVED = "approved", "Approved"
     PAID = "paid", "Paid"
     CANCELLED = "cancelled", "Cancelled"
-
-
-class AgentPlanStatus(models.TextChoices):
-    PENDING = "pending", "Pending"
-    APPROVED = "approved", "Approved"
-    REJECTED = "rejected", "Rejected"
-    APPLIED = "applied", "Applied"
 
 
 # Maps a volume's label state to the task type produced when splitting it.

@@ -61,7 +61,6 @@ INSTALLED_APPS = [
     "volumes",
     "annotation",
     "payments",
-    "agents",
 ]
 
 MIDDLEWARE = [

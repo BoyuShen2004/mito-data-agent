@@ -2,86 +2,54 @@
 
 A web-based **mitochondria annotation task-management platform**. Managers
 create annotation projects, register image volumes, split them into
-frame-based tasks, assign work to annotators, and review submitted labels.
-The system tracks task status, project progress, annotator workload, and
-estimated payment.
+frame-based tasks, assign work to annotators, and review submitted labels. The
+system tracks task status, project progress, annotator workload, and estimated
+payment.
 
-The app is a **React + Vite + TypeScript** single-page frontend talking to a
+**Architecture.** A **React + Vite + TypeScript** single-page app talks to a
 **Django + Django REST Framework** backend over a token-authenticated JSON API.
-Django admin is retained for internal debugging only — it is not the
-user-facing UI.
-
-```
-mito_data_agent/
-├── backend/          Django + DRF API
-│   ├── manage.py
-│   ├── config/       settings, urls, wsgi/asgi
-│   ├── accounts/     users, roles, institutions, annotator profiles
-│   ├── projects/     annotation projects
-│   ├── volumes/      image volumes + frame-based task splitting
-│   ├── annotation/   tasks, submissions, review workflow
-│   ├── payments/     estimated payment records
-│   ├── agents/       AgentPlan placeholder (future LangGraph)
-│   └── core/         shared choices, storage, services, permissions
-├── frontend/         React + Vite + TypeScript SPA
-│   └── src/{api,components,pages,routes,types,hooks,auth}
-└── docs/
-```
-
-## Two servers (read this first)
-
-This app runs as **two processes** during development:
-
-| Process | URL | What it is |
-| ------- | --- | ---------- |
-| **Frontend** (React/Vite) | **http://localhost:5173** | 👈 **Open this** — the actual app |
-| **Backend** (Django/DRF)  | http://127.0.0.1:8000 | JSON API + `/admin/` only |
-
-> Opening **http://127.0.0.1:8000/** in a browser is **not** the app — it's the
-> API server. It shows a small landing page pointing you to the UI. The user
-> interface lives at **http://localhost:5173**. You need **both** servers
-> running: the frontend calls the backend's API.
+The two run as separate processes in development (Vite proxies `/api` and
+`/media` to Django); `./dev.sh` starts and stops both together. Django admin is
+retained for internal debugging only — it is not the user-facing UI.
 
 ## Quick start
 
-All commands below are run from the **repo root**
-(`/projects/weilab/shenb/mito_data_agent`) — you do **not** need to `cd backend`.
-
-Prerequisite: [conda](https://docs.conda.io/en/latest/miniconda.html)
-(Miniconda/Anaconda). The environment provides Python 3.11, Node, and all
-backend dependencies.
-
 ```bash
-# 1. Create & activate the conda environment (Python 3.11 + Node + backend deps)
-conda env create -f environment.yml
+cd /projects/weilab/shenb/mito-data-agent
 conda activate mito-data-agent
-
-# 2. Configure (env file lives at the repo root)
-cp .env.example .env                        # then edit MITO_DATA_ROOT
-
-# 3. Backend: migrate + create a manager login
-python backend/manage.py migrate
-python backend/manage.py createsuperuser     # a superuser is treated as a manager
-
-# 4. Frontend: install JS dependencies
-npm install --prefix frontend
+./dev.sh
 ```
 
-> To update the environment later after dependencies change:
-> `conda env update -f environment.yml --prune`.
->
-> **Prefer plain pip / venv instead of conda?** Use Python ≥ 3.11 and Node ≥ 18,
-> then replace step 1 with `pip install -r requirements.txt`.
+Then open **http://localhost:5173**.
 
-Then start **both** servers (use two terminals, or add `&` to the first):
+`./dev.sh` is the single command you need. It:
+
+- verifies Python / Node / npm and the backend dependencies,
+- creates `.env` from `.env.example` on first run (never overwrites an existing one),
+- installs frontend dependencies only when they are missing or have changed,
+- runs Django system checks and applies migrations,
+- starts **both** the Django API and the React dev server,
+- prints the URL to open, and
+- stops everything cleanly with a single **Ctrl+C**.
+
+**First startup** may install missing frontend dependencies and take a minute;
+**later startups are fast** because unchanged dependencies are skipped. You only
+need **one terminal**. Ordinary code changes (React components, CSS, Django
+views, serializers, services, tests) do **not** require any setup step — just
+save and the dev servers reload. `npm install` runs again only when
+`frontend/package.json` / `frontend/package-lock.json` change or
+`frontend/node_modules` is missing.
+
+### First-time setup (only if the conda environment does not exist yet)
 
 ```bash
-# Terminal 1 — backend API on http://127.0.0.1:8000
-python backend/manage.py runserver
-
-# Terminal 2 — frontend UI on http://localhost:5173   ← open this in your browser
-npm run dev --prefix frontend
+conda env create -f environment.yml   # Python 3.11 + Node + backend deps
+conda activate mito-data-agent
 ```
+
+Prefer plain pip? Use Python ≥ 3.11 and Node ≥ 18, then
+`pip install -r requirements.txt`. There is **no** separate `setup.sh` to run —
+`./dev.sh` handles everything routine.
 
 Optionally seed a demo project/user/volume for a ready-to-click walkthrough:
 
@@ -90,21 +58,72 @@ python backend/manage.py shell < backend/scripts/seed_demo.py
 # creates: manager/demo12345 (manager) and alice/demo12345 (annotator)
 ```
 
-### Configuration
+## Remote / HPC use
+
+The dev servers bind to localhost by default. To reach them from your laptop
+when the app runs on a remote server, either forward the port over SSH:
+
+```bash
+ssh -L 5173:localhost:5173 <username>@<server>
+# then open http://localhost:5173 locally
+```
+
+...or bind the servers to all interfaces and skip auto-opening a browser:
+
+```bash
+VITE_HOST=0.0.0.0 DJANGO_HOST=0.0.0.0 NO_BROWSER=1 ./dev.sh
+```
+
+Supported environment overrides (with defaults): `DJANGO_HOST=127.0.0.1`,
+`DJANGO_PORT=8000`, `VITE_HOST=127.0.0.1`, `VITE_PORT=5173`, `NO_BROWSER=0`.
+Docker is not required and no graphical desktop is assumed — if a browser cannot
+be opened, the app still runs.
+
+## Configuration
 
 `.env` (copied from `.env.example` at the repo root) drives the backend:
 
-- `MITO_DATA_ROOT` — root dir for all volume/label/submission files (DB stores
-  only paths relative to this, **never** the large image data itself).
+- `MITO_DATA_ROOT` — root dir for all volume/label/submission files. The DB
+  stores only paths relative to this root, **never** the large image data.
 - `DJANGO_DEBUG`, `DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS` — standard Django.
+- `DJANGO_CORS_ORIGINS` — browser origins allowed to call the API.
 - `MITO_DEFAULT_Z_STEP` — default frames per task when splitting.
 
-Other settings live in `backend/config/settings.py`
-(`MITO_ALLOWED_LABEL_EXTENSIONS`, `CORS_ALLOWED_ORIGINS` — defaults to `:5173`).
+The defaults in `.env.example` work locally as soon as you copy it to `.env`.
+Other backend settings live in `backend/config/settings.py`.
 
-The Vite dev server proxies `/api` and `/media` to the backend
-(`http://127.0.0.1:8000` by default; override with `VITE_BACKEND_URL`).
-`npm run build --prefix frontend` typechecks and produces a production bundle.
+## Advanced / manual development
+
+`./dev.sh` is the recommended workflow. For debugging you can still run the two
+processes by hand in separate terminals:
+
+```bash
+# Terminal 1 — Django API on http://127.0.0.1:8000
+python backend/manage.py runserver
+
+# Terminal 2 — React UI on http://localhost:5173  ← open this
+npm run dev --prefix frontend
+```
+
+Visiting **http://127.0.0.1:8000/** is the API server, not the app — it serves a
+small landing page pointing to the UI at **http://localhost:5173**.
+
+## Repository layout
+
+```
+backend/          Django + DRF API
+  manage.py
+  config/         settings, urls, wsgi/asgi
+  accounts/       users, roles, institutions, annotator profiles
+  projects/       annotation projects
+  volumes/        image volumes + frame-based task splitting
+  annotation/     tasks, submissions, review workflow
+  payments/       estimated payment records
+  core/           shared choices, storage, permissions, utils
+frontend/         React + Vite + TypeScript SPA
+  src/{api,components,pages,routes,types,hooks,auth}
+docs/             REST API reference
+```
 
 ## MVP workflow
 
@@ -132,8 +151,8 @@ Deterministic business logic lives in `<app>/services.py` (e.g.
 `create_tasks_from_volume`, `assign_tasks_rule_based`, `submit_annotation`,
 `run_basic_qc`, `review_submission`, `calculate_project_progress`,
 `calculate_annotator_workload`, `calculate_payment_summary`). DRF views, admin
-actions, management commands, and future LangGraph tools all call these same
-functions rather than reimplementing logic.
+actions, and management commands all call these functions rather than
+reimplementing logic.
 
 ## Management commands
 
@@ -164,17 +183,14 @@ See `docs/api.md` for the full endpoint list.
 ## Tests
 
 ```bash
-# From the repo root (Django's test discovery needs the app labels here
-# because the apps live under backend/):
-python backend/manage.py test accounts projects volumes annotation payments agents
-
-# ...or simply run from the backend/ directory:
-cd backend && python manage.py test
+cd backend && python manage.py test    # backend (test discovery needs backend/ as cwd)
+npm run build --prefix frontend        # typecheck + production build
 ```
 
-## Not yet implemented (deliberately out of scope)
+## Not yet implemented (out of scope for the MVP)
 
 Online annotation editor / image viewer, nnU-Net / PyTorch-Connectomics
 integration, Slurm jobs, advanced QC, real payment processing, client billing,
-Hugging Face / MitoVerse publishing, and the full LangGraph multi-agent system.
-The `agents` app ships only an `AgentPlan` placeholder model + endpoints.
+and Hugging Face / MitoVerse publishing. Production deployment (serving a built
+frontend from a single server) is future work — development intentionally keeps
+Vite and Django as separate processes.

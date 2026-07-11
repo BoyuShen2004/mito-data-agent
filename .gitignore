@@ -20,7 +20,18 @@ build/
 node_modules/
 frontend/dist/
 frontend/node_modules/
+frontend/.vite/
 dist/
+
+# dev.sh local state (dependency checksum markers, etc.)
+.dev-cache/
+
+# Test coverage / runtime logs / process files
+coverage/
+htmlcov/
+.coverage
+*.log
+*.pid
 
 # Environment / secrets
 .env

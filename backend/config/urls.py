@@ -12,12 +12,6 @@ from rest_framework.routers import DefaultRouter
 
 from .views import index
 from accounts.api import LoginView, LogoutView, MeView
-from agents.api import (
-    AgentPlanApproveView,
-    AgentPlanDetailView,
-    AgentPlanRejectView,
-    ProjectAgentPlansView,
-)
 from annotation.api import (
     AssignTasksView,
     MyCompletedTasksView,
@@ -95,27 +89,6 @@ urlpatterns = [
     # --- Payments ----------------------------------------------------------
     path("api/payments/", PaymentListView.as_view(), name="api-payments"),
     path("api/my-payments/", MyPaymentsView.as_view(), name="api-my-payments"),
-    # --- Agent plans (placeholder) -----------------------------------------
-    path(
-        "api/projects/<int:project_id>/agent-plans/",
-        ProjectAgentPlansView.as_view(),
-        name="api-project-agent-plans",
-    ),
-    path(
-        "api/agent-plans/<int:pk>/",
-        AgentPlanDetailView.as_view(),
-        name="api-agent-plan-detail",
-    ),
-    path(
-        "api/agent-plans/<int:pk>/approve/",
-        AgentPlanApproveView.as_view(),
-        name="api-agent-plan-approve",
-    ),
-    path(
-        "api/agent-plans/<int:pk>/reject/",
-        AgentPlanRejectView.as_view(),
-        name="api-agent-plan-reject",
-    ),
     # --- Project CRUD + summary (router) -----------------------------------
     path("api/", include(router.urls)),
 ]

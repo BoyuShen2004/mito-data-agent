@@ -65,12 +65,3 @@ manager-only endpoints; annotators may call annotator-only endpoints.
 | ------ | ---- | ------ |
 | GET | `/payments/` | manager |
 | GET | `/my-payments/` | annotator |
-
-## Agent plans (placeholder — future LangGraph)
-
-| Method | Path | Access |
-| ------ | ---- | ------ |
-| GET/POST | `/projects/<project_id>/agent-plans/` | manager |
-| GET | `/agent-plans/<id>/` | manager |
-| POST | `/agent-plans/<id>/approve/` | manager |
-| POST | `/agent-plans/<id>/reject/` | manager |

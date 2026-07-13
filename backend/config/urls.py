@@ -11,8 +11,9 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import index
-from accounts.api import LoginView, LogoutView, MeView
+from accounts.api import AnnotatorListView, LoginView, LogoutView, MeView, RegisterView
 from annotation.api import (
+    AssignTaskView,
     AssignTasksView,
     MyCompletedTasksView,
     MyTasksView,
@@ -23,11 +24,16 @@ from annotation.api import (
     SubmitTaskView,
     TaskDetailView,
 )
-from payments.api import MyPaymentsView, PaymentListView
 from projects.api import ProjectViewSet
-from volumes.api import ProjectVolumesView, VolumeDetailView, VolumeSplitView
+from volumes.api import (
+    HpcScanView,
+    ProjectVolumesView,
+    RegisterDataView,
+    VolumeDetailView,
+    VolumeSplitView,
+)
 
-# ProjectViewSet handles /api/projects/ CRUD plus summary & payment-summary.
+# ProjectViewSet handles /api/projects/ CRUD plus a progress summary action.
 router = DefaultRouter()
 router.register("projects", ProjectViewSet, basename="project")
 
@@ -39,6 +45,11 @@ urlpatterns = [
     path("api/auth/login/", LoginView.as_view(), name="api-login"),
     path("api/auth/logout/", LogoutView.as_view(), name="api-logout"),
     path("api/auth/me/", MeView.as_view(), name="api-me"),
+    path("api/auth/register/", RegisterView.as_view(), name="api-register"),
+    path("api/annotators/", AnnotatorListView.as_view(), name="api-annotators"),
+    # --- Data registration (requesters + managers, shared endpoint) --------
+    path("api/register-data/", RegisterDataView.as_view(), name="api-register-data"),
+    path("api/hpc/scan/", HpcScanView.as_view(), name="api-hpc-scan"),
     # --- Volumes (project-nested + detail) ---------------------------------
     path(
         "api/projects/<int:project_id>/volumes/",
@@ -64,6 +75,11 @@ urlpatterns = [
     ),
     path("api/tasks/<int:pk>/", TaskDetailView.as_view(), name="api-task-detail"),
     path(
+        "api/tasks/<int:pk>/assign/",
+        AssignTaskView.as_view(),
+        name="api-task-assign",
+    ),
+    path(
         "api/tasks/<int:pk>/submit/",
         SubmitTaskView.as_view(),
         name="api-task-submit",
@@ -86,9 +102,6 @@ urlpatterns = [
         ReviewSubmissionView.as_view(),
         name="api-submission-review",
     ),
-    # --- Payments ----------------------------------------------------------
-    path("api/payments/", PaymentListView.as_view(), name="api-payments"),
-    path("api/my-payments/", MyPaymentsView.as_view(), name="api-my-payments"),
     # --- Project CRUD + summary (router) -----------------------------------
     path("api/", include(router.urls)),
 ]

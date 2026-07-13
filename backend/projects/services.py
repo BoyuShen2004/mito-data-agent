@@ -22,6 +22,8 @@ def create_project(
     annotation_type: str | None = None,
     deadline=None,
     status: str | None = None,
+    dataset: str = "",
+    metadata: dict | None = None,
 ) -> Project:
     """Create and return a new :class:`Project`."""
     kwargs = {
@@ -30,6 +32,8 @@ def create_project(
         "institution": institution,
         "description": description,
         "annotation_target": annotation_target,
+        "dataset": dataset or "",
+        "metadata": metadata or {},
     }
     if annotation_type is not None:
         kwargs["annotation_type"] = annotation_type

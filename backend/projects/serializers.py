@@ -18,9 +18,11 @@ class ProjectSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "title",
+            "dataset",
             "institution",
             "institution_name",
             "description",
+            "metadata",
             "annotation_target",
             "annotation_type",
             "status",

@@ -1,4 +1,4 @@
-import type { AnnotationTask, AssignResult } from "../types/task";
+import type { AnnotationTask, AssignResult, Annotator } from "../types/task";
 import { api } from "./client";
 
 export const listProjectTasks = (projectId: number, status?: string) =>
@@ -13,6 +13,17 @@ export const updateTask = (id: number, data: Partial<AnnotationTask>) =>
 
 export const assignTasks = (projectId: number) =>
   api.post<AssignResult>(`/projects/${projectId}/assign-tasks/`, {});
+
+export const listAnnotators = () => api.get<Annotator[]>("/annotators/");
+
+// Manually (re)assign a task to an annotator; null unassigns it.
+export const assignTaskToAnnotator = (
+  taskId: number,
+  annotatorId: number | null,
+) =>
+  api.post<AnnotationTask>(`/tasks/${taskId}/assign/`, {
+    annotator_id: annotatorId,
+  });
 
 export const listMyTasks = () => api.get<AnnotationTask[]>("/my-tasks/");
 

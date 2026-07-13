@@ -44,7 +44,6 @@ class AnnotationTask(models.Model):
     )
     priority = models.IntegerField(default=0)
     difficulty = models.IntegerField(default=1)
-    payment_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     instructions = models.TextField(blank=True)
     deadline = models.DateField(null=True, blank=True)
 

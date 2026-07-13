@@ -15,7 +15,6 @@ export const updateVolume = (id: number, form: FormData) =>
 
 export interface SplitInput {
   z_step?: number;
-  payment_amount?: string;
   task_type?: string;
   priority?: number;
   instructions?: string;

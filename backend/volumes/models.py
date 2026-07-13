@@ -25,6 +25,13 @@ class Volume(models.Model):
     )
     name = models.CharField(max_length=255)
 
+    # A "volume" in the registration sense: the large original or logical
+    # source volume this chunk/crop belongs to. Multiple chunks/crops may share
+    # the same ``source_volume`` under the same dataset (project).
+    source_volume = models.CharField(max_length=255, blank=True)
+    # Optional chunk/crop identifier or name for this registered file.
+    chunk_id = models.CharField(max_length=255, blank=True)
+
     # Registered (path relative to MITO_DATA_ROOT) or uploaded image.
     image_path = models.CharField(max_length=1024, blank=True)
     image_file = models.FileField(

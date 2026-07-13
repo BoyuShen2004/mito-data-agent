@@ -10,7 +10,6 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--volume-id", type=int, required=True)
         parser.add_argument("--z-step", type=int, default=16)
-        parser.add_argument("--payment-amount", type=float, default=0)
         parser.add_argument(
             "--task-type",
             default=None,
@@ -27,7 +26,6 @@ class Command(BaseCommand):
             tasks = create_tasks_from_volume(
                 volume,
                 z_step=options["z_step"],
-                payment_amount=options["payment_amount"],
                 task_type=options["task_type"],
             )
         except ValueError as exc:

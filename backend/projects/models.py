@@ -8,6 +8,9 @@ class Project(models.Model):
     """An annotation project grouping volumes, tasks, and their workflow."""
 
     title = models.CharField(max_length=255)
+    # Dataset name this project registers. Required at registration time; a
+    # dataset may contain one or more volumes (see ``volumes.Volume``).
+    dataset = models.CharField(max_length=255, blank=True)
     institution = models.ForeignKey(
         "accounts.Institution",
         on_delete=models.SET_NULL,
@@ -16,6 +19,10 @@ class Project(models.Model):
         related_name="projects",
     )
     description = models.TextField(blank=True)
+    # Optional biomedical EM metadata that cannot be derived from the files
+    # (organism, tissue, cell type, imaging modality, instrument, conditions,
+    # source, publication, notes, …). Kept flexible as structured JSON.
+    metadata = models.JSONField(default=dict, blank=True)
     annotation_target = models.CharField(max_length=100, default="mitochondria")
     annotation_type = models.CharField(
         max_length=30,

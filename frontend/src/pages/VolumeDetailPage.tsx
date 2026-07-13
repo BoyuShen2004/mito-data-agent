@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getVolume, splitVolume, updateVolume } from "../api/volumes";
 import { listProjectTasks } from "../api/tasks";
+import { useAuth } from "../auth/AuthContext";
 import { useAsync } from "../hooks/useAsync";
 import StatusBadge from "../components/StatusBadge";
 import TaskTable from "../components/TaskTable";
@@ -17,6 +18,7 @@ const TASK_TYPES: TaskType[] = [
 export default function VolumeDetailPage() {
   const { id } = useParams();
   const volumeId = Number(id);
+  const { isManager } = useAuth();
   const vol = useAsync(() => getVolume(volumeId), [volumeId]);
   const tasks = useAsync(
     () =>
@@ -29,7 +31,6 @@ export default function VolumeDetailPage() {
   );
 
   const [zStep, setZStep] = useState(16);
-  const [pay, setPay] = useState("0.00");
   const [taskType, setTaskType] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -40,7 +41,6 @@ export default function VolumeDetailPage() {
     try {
       const res = await splitVolume(volumeId, {
         z_step: zStep,
-        payment_amount: pay,
         task_type: taskType || undefined,
       });
       setNotice(`Created ${res.created} task(s).`);
@@ -70,7 +70,15 @@ export default function VolumeDetailPage() {
         <table>
           <tbody>
             <tr>
-              <th>Image</th>
+              <th>Volume (source)</th>
+              <td>{v.source_volume || "—"}</td>
+            </tr>
+            <tr>
+              <th>Chunk / crop</th>
+              <td>{v.chunk_id || v.name}</td>
+            </tr>
+            <tr>
+              <th>Image (HPC path)</th>
               <td>{v.image_location || "—"}</td>
             </tr>
             <tr>
@@ -102,54 +110,52 @@ export default function VolumeDetailPage() {
             </tr>
           </tbody>
         </table>
-        <EditLabelType volume={v} onSaved={vol.reload} />
+        {isManager && <EditLabelType volume={v} onSaved={vol.reload} />}
       </div>
 
-      <div className="card">
-        <h3>Split into frame-based tasks</h3>
-        <p className="muted">
-          Task type is inferred from the label type ({v.label_type}) unless you
-          override it below.
-        </p>
-        {notice && <p className="muted">{notice}</p>}
-        <div className="row">
-          <label className="field">
-            <span>z-step</span>
-            <input
-              type="number"
-              min={1}
-              value={zStep}
-              onChange={(e) => setZStep(Number(e.target.value))}
-            />
-          </label>
-          <label className="field">
-            <span>Payment / task</span>
-            <input value={pay} onChange={(e) => setPay(e.target.value)} />
-          </label>
-          <label className="field">
-            <span>Task type override</span>
-            <select
-              value={taskType}
-              onChange={(e) => setTaskType(e.target.value)}
-            >
-              <option value="">(infer from label)</option>
-              {TASK_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {t.replace(/_/g, " ")}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        <button onClick={doSplit} disabled={busy || !v.shape_z}>
-          {busy ? "Splitting…" : "Split volume"}
-        </button>
-        {!v.shape_z && (
-          <p className="error" style={{ marginTop: "0.75rem" }}>
-            This volume has no shape_z; set it before splitting.
+      {isManager && (
+        <div className="card">
+          <h3>Split into frame-based tasks</h3>
+          <p className="muted">
+            Task type is inferred from the label type ({v.label_type}) unless
+            you override it below.
           </p>
-        )}
-      </div>
+          {notice && <p className="muted">{notice}</p>}
+          <div className="row">
+            <label className="field">
+              <span>z-step</span>
+              <input
+                type="number"
+                min={1}
+                value={zStep}
+                onChange={(e) => setZStep(Number(e.target.value))}
+              />
+            </label>
+            <label className="field">
+              <span>Task type override</span>
+              <select
+                value={taskType}
+                onChange={(e) => setTaskType(e.target.value)}
+              >
+                <option value="">(infer from label)</option>
+                {TASK_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {t.replace(/_/g, " ")}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <button onClick={doSplit} disabled={busy || !v.shape_z}>
+            {busy ? "Splitting…" : "Split volume"}
+          </button>
+          {!v.shape_z && (
+            <p className="error" style={{ marginTop: "0.75rem" }}>
+              This volume has no shape_z; set it before splitting.
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="card">
         <h3>Tasks from this volume</h3>

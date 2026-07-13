@@ -28,7 +28,6 @@ export default function TaskTable({
             <th>Type</th>
             <th>Status</th>
             {showAssignee && <th>Assignee</th>}
-            <th>Pay</th>
             <th></th>
           </tr>
         </thead>
@@ -46,7 +45,6 @@ export default function TaskTable({
                 <StatusBadge value={t.status} />
               </td>
               {showAssignee && <td>{t.assigned_to_username || "—"}</td>}
-              <td>${t.payment_amount}</td>
               <td>
                 <Link to={`/tasks/${t.id}`}>View</Link>
               </td>

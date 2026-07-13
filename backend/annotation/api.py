@@ -1,3 +1,4 @@
+from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, status
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -5,7 +6,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.roles import is_manager
+from accounts.roles import is_annotator, is_manager
 from core.choices import ACTIVE_TASK_STATUSES, TaskStatus
 from core.permissions import IsAnnotator, IsManager
 from projects.models import Project
@@ -17,7 +18,14 @@ from .serializers import (
     ReviewSerializer,
     SubmitTaskSerializer,
 )
-from .services import assign_tasks_rule_based, review_submission, submit_annotation
+from .services import (
+    assign_task_to_annotator,
+    assign_tasks_rule_based,
+    review_submission,
+    submit_annotation,
+)
+
+User = get_user_model()
 
 
 class ProjectTasksView(generics.ListAPIView):
@@ -75,6 +83,33 @@ class AssignTasksView(APIView):
         project = get_object_or_404(Project, pk=project_id)
         summary = assign_tasks_rule_based(project=project)
         return Response(summary)
+
+
+class AssignTaskView(APIView):
+    """Manually assign or reassign a single task to an annotator. Managers only.
+
+    Reassigning updates the existing task in place (no duplicate task is
+    created). Passing a null/blank ``annotator_id`` unassigns the task.
+    """
+
+    permission_classes = [IsManager]
+
+    def post(self, request, pk):
+        task = get_object_or_404(AnnotationTask, pk=pk)
+        annotator_id = request.data.get("annotator_id")
+
+        if annotator_id in (None, "", "null"):
+            task = assign_task_to_annotator(task, annotator=None)
+            return Response(AnnotationTaskSerializer(task).data)
+
+        annotator = get_object_or_404(User, pk=annotator_id)
+        if not is_annotator(annotator):
+            return Response(
+                {"detail": "Selected user is not an annotator."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        task = assign_task_to_annotator(task, annotator=annotator)
+        return Response(AnnotationTaskSerializer(task).data)
 
 
 class MyTasksView(generics.ListAPIView):

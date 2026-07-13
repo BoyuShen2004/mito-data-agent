@@ -4,6 +4,8 @@ export interface Volume {
   id: number;
   project: number;
   name: string;
+  source_volume: string;
+  chunk_id: string;
   image_path: string;
   image_file: string | null;
   label_path: string;

@@ -3,6 +3,7 @@ import { getTask } from "../api/tasks";
 import { useAsync } from "../hooks/useAsync";
 import { useAuth } from "../auth/AuthContext";
 import StatusBadge from "../components/StatusBadge";
+import MetadataCard from "../components/MetadataCard";
 
 export default function TaskDetailPage() {
   const { id } = useParams();
@@ -40,8 +41,15 @@ export default function TaskDetailPage() {
               </td>
             </tr>
             <tr>
+              <th>Dataset</th>
+              <td>{t.dataset || "—"}</td>
+            </tr>
+            <tr>
               <th>Volume</th>
-              <td>{t.volume_name}</td>
+              <td>
+                {t.source_volume || "—"}
+                {t.volume_name ? ` · chunk: ${t.volume_name}` : ""}
+              </td>
             </tr>
             <tr>
               <th>Task type</th>
@@ -67,10 +75,6 @@ export default function TaskDetailPage() {
               <td>{t.label_location || "—"}</td>
             </tr>
             <tr>
-              <th>Payment</th>
-              <td>${t.payment_amount}</td>
-            </tr>
-            <tr>
               <th>Deadline</th>
               <td>{t.deadline ?? "—"}</td>
             </tr>
@@ -81,6 +85,8 @@ export default function TaskDetailPage() {
           </tbody>
         </table>
       </div>
+
+      <MetadataCard metadata={t.project_metadata} />
 
       {canSubmit && (
         <div className="card">

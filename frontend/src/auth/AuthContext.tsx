@@ -6,16 +6,30 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { fetchMe, login as apiLogin, logout as apiLogout } from "../api/auth";
+import {
+  fetchMe,
+  login as apiLogin,
+  logout as apiLogout,
+  register as apiRegister,
+  type LoginPortal,
+  type RegisterInput,
+} from "../api/auth";
 import { getToken } from "../api/client";
 import type { CurrentUser } from "../types";
 
 interface AuthState {
   user: CurrentUser | null;
   loading: boolean;
-  login: (username: string, password: string) => Promise<CurrentUser>;
+  login: (
+    username: string,
+    password: string,
+    portal?: LoginPortal,
+  ) => Promise<CurrentUser>;
+  register: (data: RegisterInput) => Promise<CurrentUser>;
   logout: () => Promise<void>;
   isManager: boolean;
+  isRequester: boolean;
+  isAnnotator: boolean;
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
@@ -40,8 +54,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       loading,
       isManager: user?.role === "manager",
-      login: async (username, password) => {
-        const u = await apiLogin(username, password);
+      isRequester: user?.role === "requester" || user?.role === "client",
+      isAnnotator: user?.role === "annotator",
+      login: async (username, password, portal) => {
+        const u = await apiLogin(username, password, portal);
+        setUser(u);
+        return u;
+      },
+      register: async (data) => {
+        const u = await apiRegister(data);
         setUser(u);
         return u;
       },

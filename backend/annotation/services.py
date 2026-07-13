@@ -80,6 +80,28 @@ def assign_tasks_rule_based(project=None) -> dict:
     }
 
 
+def assign_task_to_annotator(task: AnnotationTask, *, annotator) -> AnnotationTask:
+    """Manually (re)assign a task to ``annotator`` (or unassign when ``None``).
+
+    Updates the existing task in place. Reassignment keeps the same task row,
+    so no duplicate annotation tasks are created.
+    """
+    if annotator is None:
+        task.assigned_to = None
+        task.status = TaskStatus.UNASSIGNED
+        task.assigned_at = None
+        task.save(update_fields=["assigned_to", "status", "assigned_at"])
+        return task
+
+    task.assigned_to = annotator
+    task.assigned_at = timezone.now()
+    # Keep an already-in-progress task in progress; otherwise mark as assigned.
+    if task.status not in ACTIVE_TASK_STATUSES:
+        task.status = TaskStatus.ASSIGNED
+    task.save(update_fields=["assigned_to", "status", "assigned_at"])
+    return task
+
+
 # --- Submission + QC -------------------------------------------------------
 
 def run_basic_qc(submission: AnnotationSubmission) -> dict:
@@ -181,17 +203,12 @@ def _record_review(submission, reviewer, decision, comments) -> ReviewRecord:
 
 
 def approve_submission(submission, *, reviewer=None, comments="") -> ReviewRecord:
-    """Approve a submission: task -> approved, set approved_at, create payment."""
-    from payments.services import ensure_payment_record
-
+    """Approve a submission: task -> approved, set approved_at."""
     review = _record_review(submission, reviewer, ReviewDecision.APPROVED, comments)
     task = submission.task
     task.status = TaskStatus.APPROVED
     task.approved_at = timezone.now()
     task.save(update_fields=["status", "approved_at"])
-
-    if task.assigned_to_id:
-        ensure_payment_record(task)
     return review
 
 

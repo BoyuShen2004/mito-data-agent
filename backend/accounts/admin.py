@@ -22,7 +22,6 @@ class AnnotatorProfileAdmin(admin.ModelAdmin):
         "user",
         "is_active_annotator",
         "max_active_tasks",
-        "pay_rate_per_task",
         "quality_score",
     )
     list_filter = ("is_active_annotator",)

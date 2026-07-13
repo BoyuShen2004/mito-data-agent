@@ -1,10 +1,11 @@
-import type { Project, ProjectSummary } from "../types/project";
-import type { ProjectPaymentSummary } from "../types/payment";
+import type { DatasetMetadata, Project, ProjectSummary } from "../types/project";
 import { api } from "./client";
 
 export interface ProjectInput {
   title: string;
+  dataset?: string;
   description?: string;
+  metadata?: DatasetMetadata;
   annotation_type?: string;
   annotation_target?: string;
   status?: string;
@@ -25,6 +26,3 @@ export const deleteProject = (id: number) => api.del<void>(`/projects/${id}/`);
 
 export const getProjectSummary = (id: number) =>
   api.get<ProjectSummary>(`/projects/${id}/summary/`);
-
-export const getProjectPaymentSummary = (id: number) =>
-  api.get<ProjectPaymentSummary>(`/projects/${id}/payment-summary/`);

@@ -3,7 +3,7 @@ Django settings for the Mito Data Agent project.
 
 Mito Data Agent is a web application for managing mitochondria annotation work:
 projects, image volumes, frame-based annotation tasks, submissions, review, and
-estimated payment/workload tracking.
+workload tracking. Annotation work is unpaid; there is no payment tracking.
 """
 
 import os
@@ -60,7 +60,6 @@ INSTALLED_APPS = [
     "projects",
     "volumes",
     "annotation",
-    "payments",
 ]
 
 MIDDLEWARE = [
@@ -147,9 +146,18 @@ LOGOUT_REDIRECT_URL = "login"
 # Root directory on the HPC / server / lab machine where image volumes,
 # optional labels, submissions, and generated task files live. The database
 # stores paths relative to this root, not the large image data itself.
-MITO_DATA_ROOT = Path(
-    os.getenv("MITO_DATA_ROOT", BASE_DIR / "mito_data_root")
-).resolve()
+#
+# A relative MITO_DATA_ROOT is resolved against the repository root (the parent
+# of ``backend/``), so values like ``./data`` mean the same thing regardless of
+# the process's current working directory. The default lives inside the repo.
+_mito_data_root_env = os.getenv("MITO_DATA_ROOT")
+if _mito_data_root_env:
+    _mito_data_root = Path(_mito_data_root_env)
+    if not _mito_data_root.is_absolute():
+        _mito_data_root = BASE_DIR.parent / _mito_data_root
+else:
+    _mito_data_root = BASE_DIR / "mito_data_root"
+MITO_DATA_ROOT = _mito_data_root.resolve()
 
 # Allowed file extensions for uploaded/registered label files (basic QC).
 MITO_ALLOWED_LABEL_EXTENSIONS = [

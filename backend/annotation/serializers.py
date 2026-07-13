@@ -5,7 +5,12 @@ from .models import AnnotationSubmission, AnnotationTask, ReviewRecord
 
 class AnnotationTaskSerializer(serializers.ModelSerializer):
     project_title = serializers.CharField(source="project.title", read_only=True)
+    dataset = serializers.CharField(source="project.dataset", read_only=True)
+    project_metadata = serializers.JSONField(source="project.metadata", read_only=True)
     volume_name = serializers.CharField(source="volume.name", read_only=True)
+    source_volume = serializers.CharField(
+        source="volume.source_volume", read_only=True
+    )
     image_location = serializers.CharField(
         source="volume.image_location", read_only=True
     )
@@ -23,8 +28,11 @@ class AnnotationTaskSerializer(serializers.ModelSerializer):
             "id",
             "project",
             "project_title",
+            "dataset",
+            "project_metadata",
             "volume",
             "volume_name",
+            "source_volume",
             "image_location",
             "label_location",
             "assigned_to",
@@ -39,7 +47,6 @@ class AnnotationTaskSerializer(serializers.ModelSerializer):
             "status",
             "priority",
             "difficulty",
-            "payment_amount",
             "instructions",
             "deadline",
             "frame_label",

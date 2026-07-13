@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 
 export default function Navbar() {
-  const { user, isManager, logout } = useAuth();
+  const { user, isManager, isRequester, logout } = useAuth();
   const navigate = useNavigate();
 
   const onLogout = async () => {
@@ -21,19 +21,23 @@ export default function Navbar() {
           <NavLink to="/projects" className="nav-link">
             Projects
           </NavLink>
-          <NavLink to="/payments" className="nav-link">
-            Payments
+          <NavLink to="/register-data" className="nav-link">
+            Register Data
+          </NavLink>
+        </>
+      ) : isRequester ? (
+        <>
+          <NavLink to="/requester" className="nav-link">
+            My Projects
+          </NavLink>
+          <NavLink to="/register-data" className="nav-link">
+            Register Data
           </NavLink>
         </>
       ) : (
-        <>
-          <NavLink to="/annotator" className="nav-link">
-            My Tasks
-          </NavLink>
-          <NavLink to="/my-payments" className="nav-link">
-            My Payments
-          </NavLink>
-        </>
+        <NavLink to="/annotator" className="nav-link">
+          My Tasks
+        </NavLink>
       )}
       <span className="spacer" />
       <span className="muted">

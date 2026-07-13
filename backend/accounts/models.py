@@ -54,7 +54,10 @@ class UserProfile(models.Model):
 
 
 class AnnotatorProfile(models.Model):
-    """Annotation-specific capacity, pay rate, and quality info."""
+    """Annotation-specific capacity and quality info.
+
+    Annotation work is unpaid; no wage/pay-rate fields are tracked.
+    """
 
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
@@ -63,9 +66,6 @@ class AnnotatorProfile(models.Model):
     )
     is_active_annotator = models.BooleanField(default=True)
     max_active_tasks = models.PositiveIntegerField(default=5)
-    pay_rate_per_task = models.DecimalField(
-        max_digits=10, decimal_places=2, default=0
-    )
     quality_score = models.FloatField(default=0.0)
     notes = models.TextField(blank=True)
 

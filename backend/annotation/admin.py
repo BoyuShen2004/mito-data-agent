@@ -14,7 +14,6 @@ class AnnotationTaskAdmin(admin.ModelAdmin):
         "status",
         "assigned_to",
         "priority",
-        "payment_amount",
     )
     list_filter = ("status", "task_type", "project")
     search_fields = ("volume__name", "assigned_to__username")

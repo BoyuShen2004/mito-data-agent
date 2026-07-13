@@ -2,9 +2,9 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from accounts.roles import is_manager
 from annotation.services import calculate_annotator_workload
-from core.permissions import IsManager
-from payments.services import calculate_payment_summary, payment_summary_by_annotator
+from core.permissions import CanRegisterData
 
 from .models import Project
 from .serializers import ProjectSerializer
@@ -12,11 +12,22 @@ from .services import calculate_project_progress, create_project
 
 
 class ProjectViewSet(viewsets.ModelViewSet):
-    """CRUD for projects plus a progress/summary action. Managers only."""
+    """CRUD for projects plus a progress/summary action.
 
-    queryset = Project.objects.select_related("institution", "created_by").all()
+    Managers see and manage every project. Requesters see and manage only the
+    projects they created. Editing/deleting is restricted to managers and the
+    owning requester (enforced by the per-object queryset below).
+    """
+
     serializer_class = ProjectSerializer
-    permission_classes = [IsManager]
+    permission_classes = [CanRegisterData]
+
+    def get_queryset(self):
+        qs = Project.objects.select_related("institution", "created_by").all()
+        if is_manager(self.request.user):
+            return qs
+        # Requesters only see their own projects.
+        return qs.filter(created_by=self.request.user)
 
     def perform_create(self, serializer):
         data = serializer.validated_data
@@ -29,42 +40,19 @@ class ProjectViewSet(viewsets.ModelViewSet):
             annotation_type=data.get("annotation_type"),
             deadline=data.get("deadline"),
             status=data.get("status"),
+            dataset=data.get("dataset", ""),
+            metadata=data.get("metadata"),
         )
         serializer.instance = project
 
     @action(detail=True, methods=["get"])
     def summary(self, request, pk=None):
         project = self.get_object()
-        return Response(
-            {
-                "project": ProjectSerializer(project).data,
-                "progress": calculate_project_progress(project),
-                "workload": calculate_annotator_workload(project=project),
-                "payment": _decimal_summary(
-                    calculate_payment_summary(project=project)
-                ),
-            }
-        )
-
-    @action(detail=True, methods=["get"], url_path="payment-summary")
-    def payment_summary(self, request, pk=None):
-        project = self.get_object()
-        return Response(
-            {
-                "totals": _decimal_summary(
-                    calculate_payment_summary(project=project)
-                ),
-                "by_annotator": payment_summary_by_annotator(project=project),
-            }
-        )
-
-
-def _decimal_summary(summary: dict) -> dict:
-    """Coerce Decimal values in the payment summary to floats for JSON."""
-    out = dict(summary)
-    out["total_amount"] = float(summary["total_amount"])
-    out["by_status"] = {
-        key: {"count": val["count"], "amount": float(val["amount"])}
-        for key, val in summary["by_status"].items()
-    }
-    return out
+        payload = {
+            "project": ProjectSerializer(project).data,
+            "progress": calculate_project_progress(project),
+        }
+        # Workload is manager-facing detail; requesters just see progress.
+        if is_manager(request.user):
+            payload["workload"] = calculate_annotator_workload(project=project)
+        return Response(payload)

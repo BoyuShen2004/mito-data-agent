@@ -11,6 +11,8 @@ from django.db import models
 class UserRole(models.TextChoices):
     MANAGER = "manager", "Manager"
     ANNOTATOR = "annotator", "Annotator"
+    REQUESTER = "requester", "Requester"
+    # Legacy roles kept for backwards compatibility with existing records.
     CLIENT = "client", "Client"
     REVIEWER = "reviewer", "Reviewer"
 
@@ -85,13 +87,6 @@ class ReviewDecision(models.TextChoices):
     APPROVED = "approved", "Approved"
     REJECTED = "rejected", "Rejected"
     REVISION_REQUESTED = "revision_requested", "Revision requested"
-
-
-class PaymentStatus(models.TextChoices):
-    PENDING = "pending", "Pending"
-    APPROVED = "approved", "Approved"
-    PAID = "paid", "Paid"
-    CANCELLED = "cancelled", "Cancelled"
 
 
 # Maps a volume's label state to the task type produced when splitting it.

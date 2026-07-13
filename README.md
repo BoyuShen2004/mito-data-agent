@@ -1,10 +1,12 @@
 # Mito Data Agent
 
-A web-based **mitochondria annotation task-management platform**. Managers
-create annotation projects, register image volumes, split them into
-frame-based tasks, assign work to annotators, and review submitted labels. The
-system tracks task status, project progress, annotator workload, and estimated
-payment.
+A web-based **mitochondria annotation task-management platform** with three
+roles. **Requesters** register datasets (references to `.tif`/`.tiff`/`.nii.gz`
+files on HPC storage) and track progress on their projects. **Managers** create
+projects, split volumes into frame-based tasks, and manually assign or reassign
+work to annotators. **Annotators** work on and submit their assigned tasks. The
+system tracks task status, project progress, and annotator workload. Annotation
+work is unpaid — there is no payment/wage tracking.
 
 **Architecture.** A **React + Vite + TypeScript** single-page app talks to a
 **Django + Django REST Framework** backend over a token-authenticated JSON API.
@@ -51,12 +53,15 @@ Prefer plain pip? Use Python ≥ 3.11 and Node ≥ 18, then
 `pip install -r requirements.txt`. There is **no** separate `setup.sh` to run —
 `./dev.sh` handles everything routine.
 
-Optionally seed a demo project/user/volume for a ready-to-click walkthrough:
+Optionally load the standard mock dataset for a ready-to-click walkthrough:
 
 ```bash
-python backend/manage.py shell < backend/scripts/seed_demo.py
-# creates: manager/demo12345 (manager) and alice/demo12345 (annotator)
+cd backend && python manage.py seed_dev
+# creates (password demo12345): manager (manager), alice + bob (annotators),
+# lab_requester (requester), a registered demo dataset, tasks, and a submission.
 ```
+
+See **Developer commands** below for clearing and resetting dev data.
 
 ## Remote / HPC use
 
@@ -116,45 +121,50 @@ backend/          Django + DRF API
   config/         settings, urls, wsgi/asgi
   accounts/       users, roles, institutions, annotator profiles
   projects/       annotation projects
-  volumes/        image volumes + frame-based task splitting
+  volumes/        image volumes + frame-based task splitting + data registration
   annotation/     tasks, submissions, review workflow
-  payments/       estimated payment records
   core/           shared choices, storage, permissions, utils
 frontend/         React + Vite + TypeScript SPA
   src/{api,components,pages,routes,types,hooks,auth}
 docs/             REST API reference
 ```
 
-## MVP workflow
+## Workflow
 
-1. Manager creates a project.
-2. Manager registers/uploads an image volume, recording its **label type**
-   (`none` / `prediction` / `proofread` / `partial`).
-3. Manager splits the volume into frame-based tasks. The task type is inferred
-   from the label type:
+1. A requester (or manager) opens **Register Data**, enters a **dataset** and
+   **volume** name, selects an **HPC directory**, and registers the supported
+   `.tif`/`.tiff`/`.nii.gz` files in it as chunks/crops. Optional biomedical
+   metadata is collected; resolution/shape/mito counts are derived from files.
+   This creates (or attaches to) an annotation project.
+2. Manager splits a volume into frame-based tasks. The task type is inferred
+   from the volume's **label type**:
    - `none` → `manual_annotation`
    - `prediction` → `prediction_proofreading`
    - `proofread` → `final_review`
    - `partial` → `manual_annotation` (manager may override)
-4. Manager assigns tasks manually or via rule-based auto-assignment (respects
-   each annotator's `max_active_tasks`).
-5. Annotator logs in, views assigned tasks, downloads data externally, and
-   uploads a completed label file. Basic QC runs on submit.
-6. Manager reviews: **approve** (creates/updates a payment record), **reject**,
-   or **request revision**.
-7. Progress, workload, and estimated payment update accordingly.
+3. Manager assigns tasks manually (per-task annotator dropdown) or via
+   rule-based auto-assignment (respects each annotator's `max_active_tasks`).
+   Reassignment updates the existing task in place.
+4. Annotator logs in, views assigned tasks and their dataset metadata,
+   downloads data externally, and uploads a completed label file. Basic QC runs
+   on submit.
+5. Manager reviews: **approve**, **reject**, or **request revision**.
+6. Progress and workload update accordingly. All three roles can view the
+   metadata for projects they are authorized to access.
 
 ## Service layer
 
 Deterministic business logic lives in `<app>/services.py` (e.g.
-`create_project`, `register_volume`, `split_volume_by_frames`,
-`create_tasks_from_volume`, `assign_tasks_rule_based`, `submit_annotation`,
-`run_basic_qc`, `review_submission`, `calculate_project_progress`,
-`calculate_annotator_workload`, `calculate_payment_summary`). DRF views, admin
-actions, and management commands all call these functions rather than
-reimplementing logic.
+`create_project`, `register_volume`, `register_dataset`, `scan_hpc_directory`,
+`split_volume_by_frames`, `create_tasks_from_volume`, `assign_tasks_rule_based`,
+`assign_task_to_annotator`, `submit_annotation`, `run_basic_qc`,
+`review_submission`, `calculate_project_progress`,
+`calculate_annotator_workload`). DRF views, admin actions, and management
+commands all call these functions rather than reimplementing logic.
 
 ## Management commands
+
+Workflow helpers:
 
 ```bash
 python backend/manage.py split_volume --volume-id 1 --z-step 16
@@ -162,21 +172,39 @@ python backend/manage.py assign_tasks --project-id 1
 python backend/manage.py progress_report --project-id 1
 ```
 
+Developer data management (run from `backend/`, DEBUG-guarded):
+
+```bash
+python manage.py dev_status            # show counts of current data
+python manage.py seed_dev              # load the standard mock dataset
+python manage.py seed_dev --fresh      # clear first, then seed
+python manage.py clear_dev_data        # delete dev data (prompts; --no-input to skip)
+python manage.py clear_dev_data --files --keep-users
+python manage.py reset_dev             # clear + migrate + reseed (one shot)
+```
+
+`clear_dev_data` / `reset_dev` always preserve superusers and refuse to run when
+`DEBUG=False` unless given `--force`. `--files` also removes the mock TIFF
+volumes written under `MITO_DATA_ROOT/dev_mock/`.
+
 ## REST API (selected)
 
 | Method | Path | Purpose |
 | ------ | ---- | ------- |
-| POST | `/api/auth/login/` | obtain token |
+| POST | `/api/auth/login/` | obtain token (`portal` validates the login tab) |
+| POST | `/api/auth/register/` | public signup (annotator / requester) |
 | GET  | `/api/auth/me/` | current user |
+| POST | `/api/hpc/scan/` | list supported files in an HPC directory |
+| POST | `/api/register-data/` | shared data registration (requester + manager) |
 | GET/POST | `/api/projects/` | list / create projects |
-| GET | `/api/projects/<id>/summary/` | progress + workload + payment |
+| GET | `/api/projects/<id>/summary/` | progress (+ workload for managers) |
 | GET/POST | `/api/projects/<id>/volumes/` | list / register volumes |
 | POST | `/api/volumes/<id>/split/` | frame-based task splitting |
 | POST | `/api/projects/<id>/assign-tasks/` | rule-based assignment |
+| POST | `/api/tasks/<id>/assign/` | manual (re)assignment (manager) |
 | GET | `/api/my-tasks/` | annotator's assigned tasks |
 | POST | `/api/tasks/<id>/submit/` | upload completed label |
 | POST | `/api/submissions/<id>/review/` | approve / reject / request revision |
-| GET | `/api/payments/`, `/api/my-payments/` | payment records |
 
 See `docs/api.md` for the full endpoint list.
 
@@ -190,7 +218,8 @@ npm run build --prefix frontend        # typecheck + production build
 ## Not yet implemented (out of scope for the MVP)
 
 Online annotation editor / image viewer, nnU-Net / PyTorch-Connectomics
-integration, Slurm jobs, advanced QC, real payment processing, client billing,
-and Hugging Face / MitoVerse publishing. Production deployment (serving a built
+integration, Slurm jobs, advanced QC, and Hugging Face / MitoVerse publishing.
+Payments, wages, and billing are intentionally excluded — annotation work is
+unpaid. Production deployment (serving a built
 frontend from a single server) is future work — development intentionally keeps
 Vite and Django as separate processes.

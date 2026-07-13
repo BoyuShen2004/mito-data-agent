@@ -1,6 +1,12 @@
 // Shared enums / literal unions mirroring the Django `TextChoices`.
 
-export type Role = "manager" | "annotator" | "client" | "reviewer" | null;
+export type Role =
+  | "manager"
+  | "annotator"
+  | "requester"
+  | "client"
+  | "reviewer"
+  | null;
 
 export type LabelType = "none" | "prediction" | "proofread" | "partial";
 
@@ -31,8 +37,6 @@ export type ProjectStatus =
 export type QCStatus = "not_run" | "passed" | "warning" | "failed";
 
 export type ReviewDecision = "approved" | "rejected" | "revision_requested";
-
-export type PaymentStatus = "pending" | "approved" | "paid" | "cancelled";
 
 export interface CurrentUser {
   id: number;

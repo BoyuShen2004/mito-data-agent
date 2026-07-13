@@ -1,11 +1,28 @@
 import type { ProjectStatus, TaskStatus } from "./index";
 
+export interface DatasetMetadata {
+  organism?: string;
+  tissue?: string;
+  cell_type?: string;
+  imaging_modality?: string;
+  imaging_instrument?: string;
+  experimental_condition?: string;
+  sample_condition?: string;
+  dataset_source?: string;
+  publication?: string;
+  description?: string;
+  notes?: string;
+  [key: string]: unknown;
+}
+
 export interface Project {
   id: number;
   title: string;
+  dataset: string;
   institution: number | null;
   institution_name: string;
   description: string;
+  metadata: DatasetMetadata;
   annotation_target: string;
   annotation_type: string;
   status: ProjectStatus;
@@ -34,15 +51,9 @@ export interface WorkloadRow {
   approved: number;
 }
 
-export interface PaymentTotals {
-  total_records: number;
-  total_amount: number;
-  by_status: Record<string, { count: number; amount: number }>;
-}
-
 export interface ProjectSummary {
   project: Project;
   progress: ProjectProgress;
-  workload: WorkloadRow[];
-  payment: PaymentTotals;
+  // Manager-only detail; absent for requesters.
+  workload?: WorkloadRow[];
 }

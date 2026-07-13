@@ -2,14 +2,17 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { homePathForRole } from "../routes/AppRoutes";
-import type { LoginPortal } from "../api/auth";
 
-export default function LoginPage() {
-  const { login, user } = useAuth();
+type RegRole = "annotator" | "requester";
+
+export default function RegisterPage() {
+  const { register, user } = useAuth();
   const navigate = useNavigate();
-  const [portal, setPortal] = useState<LoginPortal>("requester");
+  const [role, setRole] = useState<RegRole>("requester");
   const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [institution, setInstitution] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -22,10 +25,16 @@ export default function LoginPage() {
     setBusy(true);
     setError(null);
     try {
-      const u = await login(username, password, portal);
+      const u = await register({
+        username,
+        password,
+        email,
+        role,
+        institution_name: institution,
+      });
       navigate(homePathForRole(u.role), { replace: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      setError(err instanceof Error ? err.message : "Registration failed");
     } finally {
       setBusy(false);
     }
@@ -36,64 +45,41 @@ export default function LoginPage() {
       <aside className="login-brand">
         <div className="brand-mark">🧬 Mito Data Agent</div>
         <div className="brand-hero">
-          <h1>
-            Mitochondria annotation,
-            <br />
-            organized end to end.
-          </h1>
+          <h1>Create your account</h1>
           <p>
-            Requesters register image volumes from HPC storage; managers create
-            projects and assign annotators; annotators complete and submit
-            frame-based tasks — with progress tracked throughout.
+            Join as an <strong>annotation service requester</strong> to register
+            datasets and track annotation progress, or as an{" "}
+            <strong>annotator</strong> to work on assigned tasks.
           </p>
         </div>
-        <ul className="brand-features">
-          <li>
-            <span className="tick">✓</span> Register HPC datasets, volumes &amp;
-            chunks
-          </li>
-          <li>
-            <span className="tick">✓</span> Manual task assignment &amp; review
-            with QC
-          </li>
-          <li>
-            <span className="tick">✓</span> Live project progress &amp; metadata
-          </li>
-        </ul>
       </aside>
 
       <main className="login-form-panel">
         <div className="login-card">
           <div className="login-mobile-brand">🧬 Mito Data Agent</div>
-          <h2>Welcome back</h2>
-          <p className="subtitle">Sign in to your workspace</p>
+          <h2>Sign up</h2>
+          <p className="subtitle">Choose the type of account to create</p>
 
           <div className="tabs" role="tablist">
             <button
               type="button"
               role="tab"
-              aria-selected={portal === "requester"}
-              className={`tab ${portal === "requester" ? "tab-active" : ""}`}
-              onClick={() => setPortal("requester")}
+              aria-selected={role === "requester"}
+              className={`tab ${role === "requester" ? "tab-active" : ""}`}
+              onClick={() => setRole("requester")}
             >
-              Requester Login
+              Register as Requester
             </button>
             <button
               type="button"
               role="tab"
-              aria-selected={portal === "annotator"}
-              className={`tab ${portal === "annotator" ? "tab-active" : ""}`}
-              onClick={() => setPortal("annotator")}
+              aria-selected={role === "annotator"}
+              className={`tab ${role === "annotator" ? "tab-active" : ""}`}
+              onClick={() => setRole("annotator")}
             >
-              Annotator Login
+              Register as Annotator
             </button>
           </div>
-
-          {portal === "annotator" && (
-            <p className="subtitle">
-              Managers sign in here using their manager account.
-            </p>
-          )}
 
           {error && <div className="error">{error}</div>}
 
@@ -104,8 +90,16 @@ export default function LoginPage() {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 autoComplete="username"
-                placeholder="you@lab"
-                autoFocus
+                required
+              />
+            </label>
+            <label className="field">
+              <span>Email (optional)</span>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
               />
             </label>
             <label className="field">
@@ -114,18 +108,26 @@ export default function LoginPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
-                placeholder="••••••••"
+                autoComplete="new-password"
+                required
               />
             </label>
+            {role === "requester" && (
+              <label className="field">
+                <span>Institution / lab (optional)</span>
+                <input
+                  value={institution}
+                  onChange={(e) => setInstitution(e.target.value)}
+                />
+              </label>
+            )}
             <button type="submit" className="btn-block" disabled={busy}>
-              {busy ? "Signing in…" : "Sign in"}
+              {busy ? "Creating account…" : "Create account"}
             </button>
           </form>
 
           <div className="login-hint">
-            Need an account? <Link to="/register">Create one</Link> as an
-            annotator or a requester.
+            Already have an account? <Link to="/login">Sign in</Link>
           </div>
         </div>
       </main>

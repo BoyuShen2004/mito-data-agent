@@ -31,6 +31,16 @@ def is_annotator(user) -> bool:
     return role in (UserRole.ANNOTATOR, UserRole.MANAGER)
 
 
+def is_requester(user) -> bool:
+    # The legacy ``client`` role is treated as a requester.
+    return get_role(user) in (UserRole.REQUESTER, UserRole.CLIENT)
+
+
+def can_register_data(user) -> bool:
+    """Requesters and managers may register datasets."""
+    return is_manager(user) or is_requester(user)
+
+
 def manager_required(view_func):
     @wraps(view_func)
     @login_required
@@ -48,6 +58,17 @@ def annotator_required(view_func):
     def _wrapped(request, *args, **kwargs):
         if not is_annotator(request.user):
             raise PermissionDenied("Annotator access required.")
+        return view_func(request, *args, **kwargs)
+
+    return _wrapped
+
+
+def requester_required(view_func):
+    @wraps(view_func)
+    @login_required
+    def _wrapped(request, *args, **kwargs):
+        if not is_requester(request.user):
+            raise PermissionDenied("Requester access required.")
         return view_func(request, *args, **kwargs)
 
     return _wrapped

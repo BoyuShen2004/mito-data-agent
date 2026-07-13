@@ -1,11 +1,16 @@
 import type { TaskStatus, TaskType } from "./index";
 
+import type { DatasetMetadata } from "./project";
+
 export interface AnnotationTask {
   id: number;
   project: number;
   project_title: string;
+  dataset: string;
+  project_metadata: DatasetMetadata;
   volume: number;
   volume_name: string;
+  source_volume: string;
   image_location: string;
   label_location: string;
   assigned_to: number | null;
@@ -20,7 +25,6 @@ export interface AnnotationTask {
   status: TaskStatus;
   priority: number;
   difficulty: number;
-  payment_amount: string;
   instructions: string;
   deadline: string | null;
   frame_label: string;
@@ -34,4 +38,11 @@ export interface AssignResult {
   assigned: number;
   per_user: Record<string, number>;
   remaining_unassigned: number;
+}
+
+export interface Annotator {
+  id: number;
+  username: string;
+  is_active_annotator: boolean;
+  max_active_tasks: number;
 }

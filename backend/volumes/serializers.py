@@ -15,6 +15,8 @@ class VolumeSerializer(serializers.ModelSerializer):
             "id",
             "project",
             "name",
+            "source_volume",
+            "chunk_id",
             "image_path",
             "image_file",
             "label_path",
@@ -40,9 +42,55 @@ class VolumeSerializer(serializers.ModelSerializer):
 
 class VolumeSplitSerializer(serializers.Serializer):
     z_step = serializers.IntegerField(required=False, min_value=1)
-    payment_amount = serializers.DecimalField(
-        max_digits=10, decimal_places=2, required=False, default=0
-    )
     task_type = serializers.CharField(required=False, allow_blank=True)
     priority = serializers.IntegerField(required=False, default=0)
     instructions = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class HpcScanSerializer(serializers.Serializer):
+    hpc_directory = serializers.CharField()
+
+
+class RegisterDataFileSerializer(serializers.Serializer):
+    path = serializers.CharField(required=False, allow_blank=True, default="")
+    name = serializers.CharField(required=False, allow_blank=True, default="")
+    chunk_id = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+# Optional, non-image-derived biomedical metadata (see Mitoverse). Resolution,
+# shape, and mitochondria counts are derived from the files, never entered here.
+METADATA_FIELDS = [
+    "organism",
+    "tissue",
+    "cell_type",
+    "imaging_modality",
+    "imaging_instrument",
+    "experimental_condition",
+    "sample_condition",
+    "dataset_source",
+    "publication",
+    "description",
+    "notes",
+]
+
+
+class RegisterDataSerializer(serializers.Serializer):
+    """Shared payload used by requesters and managers to register data."""
+
+    dataset = serializers.CharField()
+    volume = serializers.CharField()
+    hpc_directory = serializers.CharField()
+    project = serializers.IntegerField(required=False, allow_null=True)
+    annotation_type = serializers.CharField(required=False, allow_blank=True)
+    files = RegisterDataFileSerializer(many=True, required=False)
+    metadata = serializers.DictField(required=False)
+
+    def validate_dataset(self, value):
+        if not value.strip():
+            raise serializers.ValidationError("A dataset name is required.")
+        return value
+
+    def validate_volume(self, value):
+        if not value.strip():
+            raise serializers.ValidationError("A volume name is required.")
+        return value

@@ -1,27 +1,30 @@
 import { Link } from "react-router-dom";
 import { listProjects } from "../api/projects";
 import { listSubmissions } from "../api/submissions";
-import { listPayments } from "../api/payments";
 import { useAsync } from "../hooks/useAsync";
 import StatusBadge from "../components/StatusBadge";
 
 export default function ManagerDashboard() {
   const projects = useAsync(listProjects, []);
   const submissions = useAsync(() => listSubmissions("submitted"), []);
-  const payments = useAsync(listPayments, []);
 
-  const pendingPay = (payments.data ?? []).filter(
-    (p) => p.status !== "paid" && p.status !== "cancelled",
+  const totalVolumes = (projects.data ?? []).reduce(
+    (s, p) => s + p.volume_count,
+    0,
   );
-  const estTotal = pendingPay.reduce((s, p) => s + Number(p.amount), 0);
 
   return (
     <>
       <div className="row spread">
         <h1>Manager Dashboard</h1>
-        <Link to="/projects">
-          <button>All projects</button>
-        </Link>
+        <div className="row">
+          <Link to="/register-data">
+            <button>+ Register data</button>
+          </Link>
+          <Link to="/projects">
+            <button className="secondary">All projects</button>
+          </Link>
+        </div>
       </div>
 
       <div className="grid">
@@ -30,12 +33,12 @@ export default function ManagerDashboard() {
           <div className="stat">{projects.data?.length ?? "…"}</div>
         </div>
         <div className="card">
-          <div className="muted">Waiting for review</div>
-          <div className="stat">{submissions.data?.length ?? "…"}</div>
+          <div className="muted">Volumes / chunks</div>
+          <div className="stat">{projects.data ? totalVolumes : "…"}</div>
         </div>
         <div className="card">
-          <div className="muted">Estimated payable</div>
-          <div className="stat">${estTotal.toFixed(2)}</div>
+          <div className="muted">Waiting for review</div>
+          <div className="stat">{submissions.data?.length ?? "…"}</div>
         </div>
       </div>
 

@@ -5,6 +5,7 @@ media/
 staticfiles/
 # Local data root (image volumes, labels, submissions live outside git)
 mito_data_root/
+/data/
 
 # Python
 __pycache__/

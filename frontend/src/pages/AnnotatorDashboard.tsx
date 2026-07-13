@@ -1,16 +1,10 @@
 import { listMyCompletedTasks, listMyTasks } from "../api/tasks";
-import { listMyPayments } from "../api/payments";
 import { useAsync } from "../hooks/useAsync";
 import TaskTable from "../components/TaskTable";
 
 export default function AnnotatorDashboard() {
   const myTasks = useAsync(listMyTasks, []);
   const completed = useAsync(listMyCompletedTasks, []);
-  const payments = useAsync(listMyPayments, []);
-
-  const estEarnings = (payments.data ?? [])
-    .filter((p) => p.status !== "cancelled")
-    .reduce((s, p) => s + Number(p.amount), 0);
 
   return (
     <>
@@ -24,10 +18,6 @@ export default function AnnotatorDashboard() {
         <div className="card">
           <div className="muted">Completed</div>
           <div className="stat">{completed.data?.length ?? "…"}</div>
-        </div>
-        <div className="card">
-          <div className="muted">Estimated earnings</div>
-          <div className="stat">${estEarnings.toFixed(2)}</div>
         </div>
       </div>
 

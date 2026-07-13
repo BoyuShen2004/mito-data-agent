@@ -12,10 +12,6 @@ const COLORS: Record<string, string> = {
   passed: "badge-green",
   warning: "badge-amber",
   failed: "badge-red",
-  // payments
-  pending: "badge-amber",
-  paid: "badge-green",
-  cancelled: "badge-gray",
   // project status
   draft: "badge-gray",
   active: "badge-blue",

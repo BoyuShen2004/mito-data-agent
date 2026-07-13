@@ -6,6 +6,7 @@ from django.test import TestCase, override_settings
 
 from accounts.models import AnnotatorProfile
 from annotation.services import (
+    assign_task_to_annotator,
     assign_tasks_rule_based,
     calculate_annotator_workload,
     review_submission,
@@ -13,12 +14,10 @@ from annotation.services import (
 )
 from core.choices import (
     LabelType,
-    PaymentStatus,
     QCStatus,
     ReviewDecision,
     TaskStatus,
 )
-from payments.models import PaymentRecord
 from projects.services import calculate_project_progress, create_project
 from volumes.services import create_tasks_from_volume, register_volume
 
@@ -27,11 +26,10 @@ from .models import AnnotationTask
 _TMP_ROOT = tempfile.mkdtemp(prefix="mito_test_")
 
 
-def make_annotator(username, max_active=5, rate="1.00"):
+def make_annotator(username, max_active=5):
     user = User.objects.create_user(username=username, password="x")
     AnnotatorProfile.objects.create(
         user=user, is_active_annotator=True, max_active_tasks=max_active,
-        pay_rate_per_task=rate,
     )
     return user
 
@@ -52,7 +50,7 @@ class WorkflowIntegrationTests(TestCase):
 
     def test_full_workflow(self):
         # Split into frame-based tasks.
-        tasks = create_tasks_from_volume(self.volume, z_step=16, payment_amount="3.00")
+        tasks = create_tasks_from_volume(self.volume, z_step=16)
         self.assertEqual(len(tasks), 2)
         self.assertTrue(
             all(t.status == TaskStatus.UNASSIGNED for t in tasks)
@@ -78,7 +76,7 @@ class WorkflowIntegrationTests(TestCase):
         self.assertEqual(task.status, TaskStatus.SUBMITTED)
         self.assertEqual(submission.qc_status, QCStatus.PASSED)
 
-        # Manager approves -> task approved + payment record created.
+        # Manager approves -> task approved (annotation work is unpaid).
         manager = User.objects.create_user("mgr", password="x", is_superuser=True)
         review_submission(
             submission=submission,
@@ -89,10 +87,6 @@ class WorkflowIntegrationTests(TestCase):
         task.refresh_from_db()
         self.assertEqual(task.status, TaskStatus.APPROVED)
         self.assertIsNotNone(task.approved_at)
-
-        payment = PaymentRecord.objects.get(task=task)
-        self.assertEqual(str(payment.amount), "3.00")
-        self.assertEqual(payment.status, PaymentStatus.APPROVED)
 
         # Progress reflects one approved of two tasks.
         progress = calculate_project_progress(self.project)
@@ -116,7 +110,6 @@ class WorkflowIntegrationTests(TestCase):
         )
         task.refresh_from_db()
         self.assertEqual(task.status, TaskStatus.REVISION_REQUESTED)
-        self.assertFalse(PaymentRecord.objects.filter(task=task).exists())
 
     def test_qc_rejects_bad_extension(self):
         tasks = create_tasks_from_volume(self.volume, z_step=32)

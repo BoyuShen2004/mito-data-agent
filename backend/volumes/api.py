@@ -76,10 +76,15 @@ class RegisterDataView(APIView):
                 dataset=data["dataset"],
                 volume=data["volume"],
                 hpc_directory=data["hpc_directory"],
+                pairs=data.get("pairs"),
                 files=data.get("files"),
+                label_type=data.get("label_type") or "none",
                 metadata=data.get("metadata"),
                 project=project,
                 annotation_type=data.get("annotation_type") or None,
+                # Manager-registered data is reviewed on creation; requester data
+                # stays pending until a manager approves it.
+                reviewed=is_manager(request.user),
             )
         except DataRegistrationError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -180,6 +185,11 @@ class VolumeSplitView(APIView):
 
     def post(self, request, pk):
         volume = get_object_or_404(Volume, pk=pk)
+        if not volume.project.manager_reviewed:
+            return Response(
+                {"detail": "Review the project before splitting its volumes."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         serializer = VolumeSplitSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data

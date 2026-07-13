@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from core.choices import LabelType
+
 from .models import Volume
 
 
@@ -57,6 +59,12 @@ class RegisterDataFileSerializer(serializers.Serializer):
     chunk_id = serializers.CharField(required=False, allow_blank=True, default="")
 
 
+class RegisterDataPairSerializer(serializers.Serializer):
+    image = serializers.CharField()
+    mask = serializers.CharField(required=False, allow_blank=True, default="")
+    chunk_id = serializers.CharField(required=False, allow_blank=True, default="")
+
+
 # Optional, non-image-derived biomedical metadata (see Mitoverse). Resolution,
 # shape, and mitochondria counts are derived from the files, never entered here.
 METADATA_FIELDS = [
@@ -82,7 +90,13 @@ class RegisterDataSerializer(serializers.Serializer):
     hpc_directory = serializers.CharField()
     project = serializers.IntegerField(required=False, allow_null=True)
     annotation_type = serializers.CharField(required=False, allow_blank=True)
+    # Image+mask pairs (preferred) and/or image-only files. When both are
+    # omitted the directory is auto-scanned and all detected pairs registered.
+    pairs = RegisterDataPairSerializer(many=True, required=False)
     files = RegisterDataFileSerializer(many=True, required=False)
+    label_type = serializers.ChoiceField(
+        choices=[c.value for c in LabelType], required=False, allow_blank=True
+    )
     metadata = serializers.DictField(required=False)
 
     def validate_dataset(self, value):

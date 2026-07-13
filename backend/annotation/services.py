@@ -23,13 +23,16 @@ from .models import AnnotationSubmission, AnnotationTask, ReviewRecord
 # --- Assignment ------------------------------------------------------------
 
 def assign_tasks_rule_based(project=None) -> dict:
-    """Assign unassigned tasks to active annotators with spare capacity.
+    """Evenly distribute unassigned tasks across active annotators.
 
     Rules:
       * consider active annotators (``AnnotatorProfile.is_active_annotator``);
       * an annotator's load = tasks in ``assigned``/``in_progress`` status;
       * never exceed ``max_active_tasks``;
-      * process tasks by priority desc, then created_at asc.
+      * process tasks by priority desc, then created_at asc;
+      * balance the work: each task goes to the eligible annotator with the
+        fewest tasks assigned so far (existing load + this run), so volumes are
+        spread out roughly evenly rather than piled onto one person.
 
     Returns a summary dict with the number assigned and per-annotator counts.
     """
@@ -38,11 +41,12 @@ def assign_tasks_rule_based(project=None) -> dict:
         task_qs = task_qs.filter(project=project)
     task_qs = task_qs.order_by("-priority", "created_at")
 
-    # Build capacity map: remaining = max_active_tasks - current active load.
+    # Build capacity + starting-load maps keyed by annotator user id.
     annotators = list(
         AnnotatorProfile.objects.filter(is_active_annotator=True).select_related("user")
     )
     capacity: dict[int, int] = {}
+    load: dict[int, int] = {}
     for profile in annotators:
         active = AnnotationTask.objects.filter(
             assigned_to=profile.user, status__in=ACTIVE_TASK_STATUSES
@@ -50,23 +54,25 @@ def assign_tasks_rule_based(project=None) -> dict:
         remaining = max(profile.max_active_tasks - active, 0)
         if remaining > 0:
             capacity[profile.user_id] = remaining
+            load[profile.user_id] = active
 
     assigned_count = 0
     per_user: dict[int, int] = {}
 
     with transaction.atomic():
         for task in task_qs.select_for_update():
-            # Pick the annotator with the most remaining capacity.
             available = [uid for uid, rem in capacity.items() if rem > 0]
             if not available:
                 break
-            user_id = max(available, key=lambda uid: capacity[uid])
+            # Least-loaded annotator wins; ties broken by user id for stability.
+            user_id = min(available, key=lambda uid: (load[uid], uid))
             task.assigned_to_id = user_id
             task.status = TaskStatus.ASSIGNED
             task.assigned_at = timezone.now()
             task.save(update_fields=["assigned_to", "status", "assigned_at"])
 
             capacity[user_id] -= 1
+            load[user_id] += 1
             per_user[user_id] = per_user.get(user_id, 0) + 1
             assigned_count += 1
 
@@ -78,6 +84,68 @@ def assign_tasks_rule_based(project=None) -> dict:
             **({"project": project} if project is not None else {}),
         ).count(),
     }
+
+
+def ensure_volume_tasks(project) -> dict:
+    """Create one whole-volume annotation task per volume that has none.
+
+    Auto-assignment works at the volume level: rather than splitting a volume
+    into frames, each volume becomes a single task spanning its full extent, so
+    a whole volume can be handed to one annotator. Volumes that already have
+    tasks (e.g. a manager split them manually) are left untouched. Volumes
+    without a detectable shape are skipped.
+
+    Returns ``{"created": n, "skipped": n}``.
+    """
+    from volumes.services import infer_task_type
+
+    created = 0
+    skipped = 0
+    for volume in project.volumes.all():
+        if volume.tasks.exists():
+            continue
+        if not volume.shape_z:
+            skipped += 1
+            continue
+        AnnotationTask.objects.create(
+            project=project,
+            volume=volume,
+            z_start=0,
+            z_end=volume.shape_z,
+            y_start=0,
+            y_end=volume.shape_y or 0,
+            x_start=0,
+            x_end=volume.shape_x or 0,
+            task_type=infer_task_type(volume.label_type),
+        )
+        created += 1
+    return {"created": created, "skipped": skipped}
+
+
+def auto_assign_project(project) -> dict:
+    """Turn each volume into a task and distribute the volumes evenly.
+
+    Requires the project to be manager-reviewed. Volumes with no task get one
+    whole-volume task; then all unassigned tasks are balanced across active
+    annotators. Returns a summary dict (``reviewed`` is ``False`` when blocked).
+    """
+    if not project.manager_reviewed:
+        return {
+            "reviewed": False,
+            "assigned": 0,
+            "created_tasks": 0,
+            "skipped_volumes": 0,
+            "per_user": {},
+            "remaining_unassigned": 0,
+            "detail": "Project must be reviewed by a manager before assignment.",
+        }
+
+    ensured = ensure_volume_tasks(project)
+    summary = assign_tasks_rule_based(project=project)
+    summary["reviewed"] = True
+    summary["created_tasks"] = ensured["created"]
+    summary["skipped_volumes"] = ensured["skipped"]
+    return summary
 
 
 def assign_task_to_annotator(task: AnnotationTask, *, annotator) -> AnnotationTask:

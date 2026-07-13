@@ -91,6 +91,92 @@ class DataRegistrationFlowTests(APITestCase):
         self.assertEqual(summ.status_code, 200)
         self.assertIn("progress", summ.data)
 
+    def test_register_image_mask_pairs_via_endpoint(self):
+        # A folder with an image+mask pair plus an unrelated volume.
+        import os
+
+        pair_dir = os.path.join(self.data_dir, "pairs")
+        os.makedirs(pair_dir, exist_ok=True)
+        for name in ("s1_image.tif", "s1_mask.tif", "s2_image.tif"):
+            with open(os.path.join(pair_dir, name), "wb") as fh:
+                fh.write(b"II*\x00")
+
+        self._auth(token=self.req_token)
+
+        # Scan surfaces the auto-detected pair.
+        scan = self.client.post(reverse("api-hpc-scan"), {"hpc_directory": pair_dir})
+        self.assertEqual(scan.status_code, 200, scan.data)
+        self.assertEqual(len(scan.data["pairs"]), 1)
+        self.assertEqual(scan.data["pairs"][0]["image"], "s1_image.tif")
+        self.assertEqual(scan.data["pairs"][0]["mask"], "s1_mask.tif")
+
+        # Register just the explicit pair out of the folder.
+        reg = self.client.post(
+            reverse("api-register-data"),
+            {
+                "dataset": "Paired",
+                "volume": "v",
+                "hpc_directory": pair_dir,
+                "label_type": "proofread",
+                "pairs": [{"image": "s1_image.tif", "mask": "s1_mask.tif"}],
+            },
+            format="json",
+        )
+        self.assertEqual(reg.status_code, 201, reg.data)
+        self.assertEqual(len(reg.data["volumes"]), 1)
+        vol = reg.data["volumes"][0]
+        self.assertTrue(vol["label_location"].endswith("s1_mask.tif"))
+        self.assertEqual(vol["label_type"], "proofread")
+
+    def test_review_gate_then_auto_assign_distributes_volumes(self):
+        import os
+
+        import numpy as np
+        import tifffile
+
+        # Real TIFFs so shape auto-detection works and tasks can be created.
+        vol_dir = os.path.join(self.data_dir, "vols")
+        os.makedirs(vol_dir, exist_ok=True)
+        for i in range(2):
+            tifffile.imwrite(
+                os.path.join(vol_dir, f"v{i}.tif"),
+                np.zeros((8, 16, 16), dtype=np.uint8),
+            )
+
+        # Requester registers -> project is pending manager review.
+        self._auth(token=self.req_token)
+        reg = self.client.post(
+            reverse("api-register-data"),
+            {"dataset": "Gated", "volume": "v", "hpc_directory": vol_dir},
+            format="json",
+        )
+        self.assertEqual(reg.status_code, 201, reg.data)
+        project_id = reg.data["project"]["id"]
+        self.assertFalse(reg.data["project"]["manager_reviewed"])
+
+        # Auto-assign is blocked until the manager reviews.
+        self._auth(user=self.manager)
+        blocked = self.client.post(
+            reverse("api-assign-tasks", args=[project_id]), {}, format="json"
+        )
+        self.assertEqual(blocked.status_code, 400)
+        self.assertFalse(blocked.data["reviewed"])
+
+        # Manager approves the dataset.
+        rev = self.client.post(
+            reverse("project-review", args=[project_id]), {}, format="json"
+        )
+        self.assertEqual(rev.status_code, 200, rev.data)
+        self.assertTrue(rev.data["manager_reviewed"])
+
+        # Now auto-assign creates one task per volume and assigns them.
+        res = self.client.post(
+            reverse("api-assign-tasks", args=[project_id]), {}, format="json"
+        )
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertEqual(res.data["created_tasks"], 2)
+        self.assertEqual(res.data["assigned"], 2)
+
     def test_register_data_rejects_unsupported_file(self):
         self._auth(token=self.req_token)
         res = self.client.post(
@@ -115,8 +201,10 @@ class DataRegistrationFlowTests(APITestCase):
         self.assertEqual(res.status_code, 403)
 
     def test_manager_manual_assignment(self):
-        # Set up a project + a task owned by nobody.
-        project = Project.objects.create(title="P", dataset="P", created_by=self.manager)
+        # Set up a reviewed project + a task owned by nobody.
+        project = Project.objects.create(
+            title="P", dataset="P", created_by=self.manager, manager_reviewed=True
+        )
         from volumes.services import register_volume
 
         volume = register_volume(

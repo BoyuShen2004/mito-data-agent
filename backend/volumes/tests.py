@@ -8,6 +8,7 @@ from projects.services import create_project
 from volumes.services import (
     DataRegistrationError,
     create_tasks_from_volume,
+    detect_volume_pairs,
     infer_task_type,
     register_dataset,
     register_volume,
@@ -152,3 +153,88 @@ class RegisterDatasetTests(TestCase):
     def test_missing_directory_rejected(self):
         with self.assertRaises(DataRegistrationError):
             scan_hpc_directory("does/not/exist")
+
+
+class DetectPairsTests(TestCase):
+    def test_pairs_image_and_mask_by_shared_base(self):
+        pairs, unpaired = detect_volume_pairs(
+            [
+                "cortex1_image.tif",
+                "cortex1_mask.tif",
+                "cortex2_raw.tif",
+                "cortex2_seg.tif",
+                "lonely_volume.tif",
+            ]
+        )
+        by_image = {p["image"]: p["mask"] for p in pairs}
+        self.assertEqual(by_image["cortex1_image.tif"], "cortex1_mask.tif")
+        self.assertEqual(by_image["cortex2_raw.tif"], "cortex2_seg.tif")
+        self.assertEqual(unpaired, ["lonely_volume.tif"])
+
+    def test_bare_name_and_label_suffix(self):
+        pairs, unpaired = detect_volume_pairs(["vol.tif", "vol_label.tif"])
+        self.assertEqual(len(pairs), 1)
+        self.assertEqual(pairs[0]["image"], "vol.tif")
+        self.assertEqual(pairs[0]["mask"], "vol_label.tif")
+        self.assertEqual(unpaired, [])
+
+
+@override_settings(MITO_DATA_ROOT=_TMP_ROOT)
+class RegisterPairsTests(TestCase):
+    def setUp(self):
+        # A folder holding two image+mask pairs plus one unrelated volume.
+        self.dir = tempfile.mkdtemp(dir=_TMP_ROOT)
+        for name in (
+            "sampleA_image.tif",
+            "sampleA_mask.tif",
+            "sampleB_image.tif",
+            "sampleB_mask.tif",
+            "other_volume.tif",
+        ):
+            with open(os.path.join(self.dir, name), "wb") as fh:
+                fh.write(b"x")
+
+    def test_auto_registers_all_pairs_and_unpaired(self):
+        project, volumes = register_dataset(
+            created_by=None,
+            dataset="D",
+            volume="v",
+            hpc_directory=self.dir,
+        )
+        # 2 pairs (with masks) + 1 unpaired image = 3 volumes.
+        self.assertEqual(len(volumes), 3)
+        with_mask = [v for v in volumes if v.label_path]
+        self.assertEqual(len(with_mask), 2)
+        for v in with_mask:
+            self.assertEqual(v.label_type, LabelType.PREDICTION)
+
+    def test_register_single_explicit_pair_from_mixed_folder(self):
+        project, volumes = register_dataset(
+            created_by=None,
+            dataset="D2",
+            volume="v",
+            hpc_directory=self.dir,
+            pairs=[
+                {
+                    "image": "sampleA_image.tif",
+                    "mask": "sampleA_mask.tif",
+                    "chunk_id": "A",
+                }
+            ],
+            label_type=LabelType.PROOFREAD,
+        )
+        self.assertEqual(len(volumes), 1)
+        v = volumes[0]
+        self.assertEqual(v.chunk_id, "A")
+        self.assertTrue(v.label_path.endswith("sampleA_mask.tif"))
+        self.assertEqual(v.label_type, LabelType.PROOFREAD)
+
+    def test_pair_with_missing_mask_rejected(self):
+        with self.assertRaises(DataRegistrationError):
+            register_dataset(
+                created_by=None,
+                dataset="D3",
+                volume="v",
+                hpc_directory=self.dir,
+                pairs=[{"image": "sampleA_image.tif", "mask": "nope.tif"}],
+            )

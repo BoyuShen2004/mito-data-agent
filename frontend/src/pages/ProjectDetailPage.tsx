@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { getProjectSummary, updateProject } from "../api/projects";
+import { getProjectSummary, reviewProject, updateProject } from "../api/projects";
 import { listProjectVolumes } from "../api/volumes";
 import { assignTasks } from "../api/tasks";
 import { useAuth } from "../auth/AuthContext";
@@ -34,6 +34,7 @@ export default function ProjectDetailPage() {
   const volumes = useAsync(() => listProjectVolumes(projectId), [projectId]);
 
   const [assigning, setAssigning] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
   const runAssign = async () => {
@@ -41,8 +42,17 @@ export default function ProjectDetailPage() {
     setNotice(null);
     try {
       const res = await assignTasks(projectId);
+      const created =
+        res.created_tasks && res.created_tasks > 0
+          ? `Created ${res.created_tasks} volume task(s). `
+          : "";
+      const skipped =
+        res.skipped_volumes && res.skipped_volumes > 0
+          ? ` ${res.skipped_volumes} volume(s) skipped (no detectable shape).`
+          : "";
       setNotice(
-        `Assigned ${res.assigned} task(s). ${res.remaining_unassigned} still unassigned.`,
+        `${created}Assigned ${res.assigned} volume(s) to annotators. ` +
+          `${res.remaining_unassigned} still unassigned.${skipped}`,
       );
       summary.reload();
       volumes.reload();
@@ -53,11 +63,25 @@ export default function ProjectDetailPage() {
     }
   };
 
+  const doReview = async (reviewed: boolean) => {
+    setReviewing(true);
+    setNotice(null);
+    try {
+      await reviewProject(projectId, reviewed);
+      summary.reload();
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : "Review update failed");
+    } finally {
+      setReviewing(false);
+    }
+  };
+
   if (summary.loading) return <p className="muted">Loading…</p>;
   if (summary.error) return <div className="error">{summary.error}</div>;
   if (!summary.data) return null;
 
   const { project, progress, workload } = summary.data;
+  const reviewed = project.manager_reviewed;
 
   return (
     <>
@@ -69,6 +93,14 @@ export default function ProjectDetailPage() {
         {project.annotation_type.replace(/_/g, " ")} ·{" "}
         {project.annotation_target} · deadline {project.deadline ?? "—"}
       </p>
+
+      <ReviewBanner
+        reviewed={reviewed}
+        reviewedBy={project.reviewed_by_username}
+        isManager={isManager}
+        busy={reviewing}
+        onReview={doReview}
+      />
 
       <ProjectSummaryCard progress={progress} />
 
@@ -89,21 +121,31 @@ export default function ProjectDetailPage() {
           <div className="card">
             <div className="row spread">
               <h3>Task assignment</h3>
-              <button onClick={runAssign} disabled={assigning}>
-                {assigning ? "Assigning…" : "Auto-assign (rule-based)"}
+              <button onClick={runAssign} disabled={assigning || !reviewed}>
+                {assigning ? "Assigning…" : "Auto-assign volumes to annotators"}
               </button>
             </div>
+            {!reviewed && (
+              <p className="muted">
+                Approve this dataset above to enable assignment.
+              </p>
+            )}
             {notice && <p className="muted">{notice}</p>}
-            <p className="muted">
-              Or manually assign / reassign each task to an annotator below.
-            </p>
-            <TaskAssignmentTable
-              projectId={projectId}
-              onChange={() => {
-                summary.reload();
-                volumes.reload();
-              }}
-            />
+            {reviewed && (
+              <>
+                <p className="muted">
+                  Auto-assign gives each annotator whole volumes, balanced
+                  evenly. Or manually assign / reassign below.
+                </p>
+                <TaskAssignmentTable
+                  projectId={projectId}
+                  onChange={() => {
+                    summary.reload();
+                    volumes.reload();
+                  }}
+                />
+              </>
+            )}
           </div>
 
           <div className="card">
@@ -140,6 +182,64 @@ export default function ProjectDetailPage() {
         </>
       )}
     </>
+  );
+}
+
+function ReviewBanner({
+  reviewed,
+  reviewedBy,
+  isManager,
+  busy,
+  onReview,
+}: {
+  reviewed: boolean;
+  reviewedBy: string;
+  isManager: boolean;
+  busy: boolean;
+  onReview: (reviewed: boolean) => void;
+}) {
+  if (reviewed) {
+    return (
+      <div className="card">
+        <div className="row spread">
+          <span>
+            <StatusBadge value="approved" />{" "}
+            <span className="muted">
+              Reviewed{reviewedBy ? ` by ${reviewedBy}` : ""} — assignment
+              enabled.
+            </span>
+          </span>
+          {isManager && (
+            <button
+              className="secondary"
+              onClick={() => onReview(false)}
+              disabled={busy}
+            >
+              Undo review
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="card" style={{ borderColor: "var(--warn)" }}>
+      <div className="row spread">
+        <span>
+          <StatusBadge value="in_review" />{" "}
+          <span className="muted">
+            {isManager
+              ? "Requester-registered data awaiting your review before assignment."
+              : "Awaiting manager review before annotation can be assigned."}
+          </span>
+        </span>
+        {isManager && (
+          <button onClick={() => onReview(true)} disabled={busy}>
+            {busy ? "Saving…" : "Approve & enable assignment"}
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 

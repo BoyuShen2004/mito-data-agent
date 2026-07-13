@@ -26,3 +26,7 @@ export const deleteProject = (id: number) => api.del<void>(`/projects/${id}/`);
 
 export const getProjectSummary = (id: number) =>
   api.get<ProjectSummary>(`/projects/${id}/summary/`);
+
+// Manager marks a project reviewed (or not), enabling/disabling assignment.
+export const reviewProject = (id: number, reviewed = true) =>
+  api.post<Project>(`/projects/${id}/review/`, { reviewed });

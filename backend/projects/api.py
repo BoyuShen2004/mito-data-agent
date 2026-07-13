@@ -1,4 +1,5 @@
-from rest_framework import viewsets
+from django.utils import timezone
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -42,6 +43,8 @@ class ProjectViewSet(viewsets.ModelViewSet):
             status=data.get("status"),
             dataset=data.get("dataset", ""),
             metadata=data.get("metadata"),
+            # Manager-created projects are reviewed on creation.
+            reviewed=is_manager(self.request.user),
         )
         serializer.instance = project
 
@@ -56,3 +59,21 @@ class ProjectViewSet(viewsets.ModelViewSet):
         if is_manager(request.user):
             payload["workload"] = calculate_annotator_workload(project=project)
         return Response(payload)
+
+    @action(detail=True, methods=["post"])
+    def review(self, request, pk=None):
+        """Manager marks a project reviewed (or not), enabling assignment."""
+        if not is_manager(request.user):
+            return Response(
+                {"detail": "Manager access required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        project = self.get_object()
+        reviewed = request.data.get("reviewed", True)
+        project.manager_reviewed = bool(reviewed)
+        project.reviewed_by = request.user if reviewed else None
+        project.reviewed_at = timezone.now() if reviewed else None
+        project.save(
+            update_fields=["manager_reviewed", "reviewed_by", "reviewed_at"]
+        )
+        return Response(ProjectSerializer(project).data)

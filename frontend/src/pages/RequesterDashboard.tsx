@@ -49,6 +49,7 @@ export default function RequesterDashboard() {
                 <tr>
                   <th>Dataset</th>
                   <th>Status</th>
+                  <th>Manager review</th>
                   <th>Volumes</th>
                   <th>Tasks</th>
                   <th>Created</th>
@@ -64,6 +65,11 @@ export default function RequesterDashboard() {
                     </td>
                     <td>
                       <StatusBadge value={p.status} />
+                    </td>
+                    <td>
+                      <StatusBadge
+                        value={p.manager_reviewed ? "approved" : "in_review"}
+                      />
                     </td>
                     <td>{p.volume_count}</td>
                     <td>{p.task_count}</td>

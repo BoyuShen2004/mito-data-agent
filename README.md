@@ -134,18 +134,25 @@ docs/             REST API reference
 
 1. A requester (or manager) opens **Register Data**, enters a **dataset** and
    **volume** name, selects an **HPC directory**, and registers the supported
-   `.tif`/`.tiff`/`.nii.gz` files in it as chunks/crops. Optional biomedical
+   `.tif`/`.tiff`/`.nii.gz` files in it as chunks/crops. Image + mask pairs are
+   auto-detected (by shared base name, e.g. `x_image.tif` / `x_mask.tif`); you
+   can also pair files manually or register images alone, and register a single
+   pair out of a folder that holds many other volumes. Optional biomedical
    metadata is collected; resolution/shape/mito counts are derived from files.
    This creates (or attaches to) an annotation project.
-2. Manager splits a volume into frame-based tasks. The task type is inferred
-   from the volume's **label type**:
-   - `none` → `manual_annotation`
-   - `prediction` → `prediction_proofreading`
-   - `proofread` → `final_review`
-   - `partial` → `manual_annotation` (manager may override)
-3. Manager assigns tasks manually (per-task annotator dropdown) or via
-   rule-based auto-assignment (respects each annotator's `max_active_tasks`).
-   Reassignment updates the existing task in place.
+2. A manager **reviews** requester-registered data (an Approve button on the
+   project). Until then its volumes cannot be split or assigned. Data a manager
+   registers is approved on creation.
+3. Manager assigns work:
+   - **Auto-assign** turns each volume into one whole-volume task and
+     distributes the volumes evenly across active annotators (e.g. 8 volumes / 4
+     annotators → 2 each), respecting `max_active_tasks`.
+   - **Manual** assignment/reassignment via a per-task annotator dropdown;
+     reassignment updates the existing task in place.
+   - A manager may still **split** a volume into frame-based tasks manually; the
+     task type is inferred from the volume's label type (`none` →
+     `manual_annotation`, `prediction` → `prediction_proofreading`, `proofread`
+     → `final_review`, `partial` → `manual_annotation`, overridable).
 4. Annotator logs in, views assigned tasks and their dataset metadata,
    downloads data externally, and uploads a completed label file. Basic QC runs
    on submit.

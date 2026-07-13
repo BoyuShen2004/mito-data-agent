@@ -38,6 +38,10 @@ export interface AssignResult {
   assigned: number;
   per_user: Record<string, number>;
   remaining_unassigned: number;
+  reviewed?: boolean;
+  created_tasks?: number;
+  skipped_volumes?: number;
+  detail?: string;
 }
 
 export interface Annotator {

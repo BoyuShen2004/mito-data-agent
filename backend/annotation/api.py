@@ -20,7 +20,7 @@ from .serializers import (
 )
 from .services import (
     assign_task_to_annotator,
-    assign_tasks_rule_based,
+    auto_assign_project,
     review_submission,
     submit_annotation,
 )
@@ -75,13 +75,19 @@ class TaskDetailView(generics.RetrieveUpdateAPIView):
 
 
 class AssignTasksView(APIView):
-    """Run rule-based assignment for a project. Managers only."""
+    """Auto-assign a project's volumes evenly across annotators. Managers only.
+
+    Each volume becomes one whole-volume task (no frame splitting) and the tasks
+    are balanced across active annotators. Requires a manager-reviewed project.
+    """
 
     permission_classes = [IsManager]
 
     def post(self, request, project_id):
         project = get_object_or_404(Project, pk=project_id)
-        summary = assign_tasks_rule_based(project=project)
+        summary = auto_assign_project(project)
+        if not summary.get("reviewed", True):
+            return Response(summary, status=status.HTTP_400_BAD_REQUEST)
         return Response(summary)
 
 
@@ -96,6 +102,11 @@ class AssignTaskView(APIView):
 
     def post(self, request, pk):
         task = get_object_or_404(AnnotationTask, pk=pk)
+        if not task.project.manager_reviewed:
+            return Response(
+                {"detail": "Review the project before assigning its tasks."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         annotator_id = request.data.get("annotator_id")
 
         if annotator_id in (None, "", "null"):

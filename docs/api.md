@@ -27,8 +27,17 @@ unpaid — there are no payment endpoints.
 
 | Method | Path | Notes |
 | ------ | ---- | ----- |
-| POST | `/hpc/scan/` | `{hpc_directory}` → supported `.tif`/`.tiff`/`.nii.gz` files in the directory |
-| POST | `/register-data/` | `{dataset, volume, hpc_directory, files?, metadata?, project?, annotation_type?}`. Registers HPC file references as chunks/crops under a dataset (project) + source volume. `dataset` and `volume` are required; only `.tif`/`.tiff`/`.nii.gz` files are accepted. Creates a new project unless `project` is given (must be owned by a requester or any project for a manager). |
+| POST | `/hpc/scan/` | `{hpc_directory}` → `{directory, files[], pairs[], unpaired[]}`. `pairs` are auto-detected `{image, mask, base}` image+mask matches; `unpaired` are the leftover file names. |
+| POST | `/register-data/` | `{dataset, volume, hpc_directory, pairs?, files?, label_type?, metadata?, project?, annotation_type?}`. Registers HPC file references as chunks/crops under a dataset (project) + source volume. `dataset` and `volume` are required; only `.tif`/`.tiff`/`.nii.gz` files are accepted. Creates a new project unless `project` is given (must be owned by a requester or any project for a manager). |
+
+Image/mask pairing is flexible:
+
+* `pairs`: explicit `[{image, mask?, chunk_id?}, …]` — pick specific image+mask
+  pairs out of a folder that also holds unrelated volumes. A `mask` is stored as
+  the volume's label (typed by `label_type`, default `prediction`).
+* `files`: image-only `[{path|name, chunk_id?}, …]` (no masks).
+* neither: the directory is auto-scanned and **all detected image+mask pairs
+  plus any unpaired images** are registered.
 
 `metadata` is optional biomedical detail (organism, tissue, cell_type,
 imaging_modality, imaging_instrument, experimental_condition, sample_condition,
@@ -45,6 +54,7 @@ mitochondria counts are derived from the files, never entered here.
 | PATCH | `/projects/<id>/` | partial update, incl. `metadata` (owner requester or manager) |
 | DELETE | `/projects/<id>/` | delete |
 | GET | `/projects/<id>/summary/` | progress (+ annotator workload for managers) |
+| POST | `/projects/<id>/review/` | manager only: `{reviewed?}` (default `true`) — approve requester-registered data so it can be split/assigned |
 
 ## Volumes (manager: any; requester: own project)
 
@@ -61,7 +71,7 @@ mitochondria counts are derived from the files, never entered here.
 | Method | Path | Access | Notes |
 | ------ | ---- | ------ | ----- |
 | GET | `/projects/<project_id>/tasks/` | manager | `?status=` filter |
-| POST | `/projects/<project_id>/assign-tasks/` | manager | rule-based auto-assignment |
+| POST | `/projects/<project_id>/assign-tasks/` | manager | auto-assign: one whole-volume task per volume, distributed evenly across active annotators. Requires a reviewed project (`400` with `reviewed:false` otherwise). |
 | POST | `/tasks/<id>/assign/` | manager | manual (re)assign: `{annotator_id}` (null unassigns; updates the task in place) |
 | GET | `/tasks/<id>/` | auth | manager: any; annotator: own. Includes dataset + project metadata |
 | PATCH | `/tasks/<id>/` | auth | manager: any field; annotator: start own task |

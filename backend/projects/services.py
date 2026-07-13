@@ -7,6 +7,8 @@ return model instances or plain dicts.
 
 from __future__ import annotations
 
+from django.utils import timezone
+
 from core.choices import TaskStatus
 
 from .models import Project
@@ -24,8 +26,13 @@ def create_project(
     status: str | None = None,
     dataset: str = "",
     metadata: dict | None = None,
+    reviewed: bool = False,
 ) -> Project:
-    """Create and return a new :class:`Project`."""
+    """Create and return a new :class:`Project`.
+
+    ``reviewed`` marks the project as manager-reviewed on creation (used when a
+    manager registers data directly); requester-registered data stays pending.
+    """
     kwargs = {
         "title": title,
         "created_by": created_by,
@@ -34,7 +41,11 @@ def create_project(
         "annotation_target": annotation_target,
         "dataset": dataset or "",
         "metadata": metadata or {},
+        "manager_reviewed": reviewed,
     }
+    if reviewed:
+        kwargs["reviewed_by"] = created_by
+        kwargs["reviewed_at"] = timezone.now()
     if annotation_type is not None:
         kwargs["annotation_type"] = annotation_type
     if status is not None:

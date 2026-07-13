@@ -4,9 +4,10 @@ import { useAuth } from "../auth/AuthContext";
 import {
   scanHpcDirectory,
   registerData,
-  type HpcFile,
+  type HpcScanResult,
 } from "../api/registerData";
 import type { DatasetMetadata } from "../types/project";
+import type { LabelType } from "../types";
 
 const METADATA_FIELDS: { key: keyof DatasetMetadata; label: string }[] = [
   { key: "organism", label: "Organism / species" },
@@ -20,10 +21,16 @@ const METADATA_FIELDS: { key: keyof DatasetMetadata; label: string }[] = [
   { key: "publication", label: "Publication / reference" },
 ];
 
-interface SelectedFile {
-  file: HpcFile;
-  selected: boolean;
+const LABEL_TYPES: LabelType[] = ["prediction", "proofread", "partial", "none"];
+
+const NO_MASK = ""; // sentinel for the "image only" mask option
+
+interface Row {
+  image: string;
+  mask: string; // "" = image only
   chunk_id: string;
+  selected: boolean;
+  detected: boolean; // was auto-detected as a pair
 }
 
 export default function RegisterDataPage() {
@@ -33,11 +40,13 @@ export default function RegisterDataPage() {
   const [dataset, setDataset] = useState("");
   const [volume, setVolume] = useState("");
   const [directory, setDirectory] = useState("");
+  const [labelType, setLabelType] = useState<LabelType>("prediction");
   const [metadata, setMetadata] = useState<DatasetMetadata>({});
   const [description, setDescription] = useState("");
   const [notes, setNotes] = useState("");
 
-  const [files, setFiles] = useState<SelectedFile[]>([]);
+  const [allFiles, setAllFiles] = useState<string[]>([]);
+  const [rows, setRows] = useState<Row[]>([]);
   const [scanned, setScanned] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -47,52 +56,70 @@ export default function RegisterDataPage() {
   const setMeta = (key: keyof DatasetMetadata, value: string) =>
     setMetadata((m) => ({ ...m, [key]: value }));
 
+  const buildRows = (res: HpcScanResult): Row[] => {
+    const pairRows: Row[] = res.pairs.map((p) => ({
+      image: p.image,
+      mask: p.mask,
+      chunk_id: "",
+      selected: true,
+      detected: true,
+    }));
+    const unpairedRows: Row[] = res.unpaired.map((name) => ({
+      image: name,
+      mask: NO_MASK,
+      chunk_id: "",
+      selected: true,
+      detected: false,
+    }));
+    return [...pairRows, ...unpairedRows];
+  };
+
   const doScan = async () => {
     setScanning(true);
     setError(null);
     setNotice(null);
     try {
       const res = await scanHpcDirectory(directory);
-      setFiles(
-        res.files.map((f) => ({ file: f, selected: true, chunk_id: "" })),
-      );
+      setAllFiles(res.files.map((f) => f.name));
+      setRows(buildRows(res));
       setScanned(true);
       if (res.files.length === 0) {
         setNotice("No supported .tif / .tiff / .nii.gz files found here.");
+      } else {
+        setNotice(
+          `Found ${res.files.length} file(s): ${res.pairs.length} image+mask ` +
+            `pair(s) auto-detected, ${res.unpaired.length} unpaired.`,
+        );
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Scan failed");
-      setFiles([]);
+      setRows([]);
+      setAllFiles([]);
       setScanned(false);
     } finally {
       setScanning(false);
     }
   };
 
-  const toggle = (i: number) =>
-    setFiles((fs) =>
-      fs.map((f, idx) => (idx === i ? { ...f, selected: !f.selected } : f)),
-    );
+  const update = (i: number, patch: Partial<Row>) =>
+    setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
 
-  const setChunkId = (i: number, value: string) =>
-    setFiles((fs) =>
-      fs.map((f, idx) => (idx === i ? { ...f, chunk_id: value } : f)),
-    );
+  const setAll = (selected: boolean) =>
+    setRows((rs) => rs.map((r) => ({ ...r, selected })));
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setNotice(null);
-    const chosen = files.filter((f) => f.selected);
     if (!scanned) {
       setError("Scan the HPC directory first.");
       return;
     }
+    const chosen = rows.filter((r) => r.selected);
     if (chosen.length === 0) {
-      setError("Select at least one file to register.");
+      setError("Select at least one image (or pair) to register.");
       return;
     }
-    // Clean, non-empty metadata only.
     const meta: DatasetMetadata = {};
     for (const [k, v] of Object.entries(metadata)) {
       if (typeof v === "string" && v.trim()) meta[k] = v.trim();
@@ -106,10 +133,12 @@ export default function RegisterDataPage() {
         dataset,
         volume,
         hpc_directory: directory,
+        label_type: labelType,
         metadata: meta,
-        files: chosen.map((f) => ({
-          name: f.file.name,
-          chunk_id: f.chunk_id || undefined,
+        pairs: chosen.map((r) => ({
+          image: r.image,
+          mask: r.mask || undefined,
+          chunk_id: r.chunk_id || undefined,
         })),
       });
       navigate(`/projects/${res.project.id}`);
@@ -130,8 +159,9 @@ export default function RegisterDataPage() {
       </div>
       <p className="muted">
         Register references to <code>.tif</code>, <code>.tiff</code>, and{" "}
-        <code>.nii.gz</code> files already stored on HPC. Resolution, shape, and
-        mitochondria counts are derived from the files automatically.
+        <code>.nii.gz</code> files already on HPC. Image + mask pairs are
+        auto-detected; you can also pair files manually or register images alone.
+        Resolution, shape, and mitochondria counts are derived from the files.
       </p>
 
       {error && <div className="error">{error}</div>}
@@ -161,8 +191,8 @@ export default function RegisterDataPage() {
             </label>
           </div>
           <p className="muted">
-            Multiple chunks/crops from the same source share one dataset and
-            volume.
+            Multiple chunks/crops (and their masks) from the same source share
+            one dataset and volume.
           </p>
         </div>
 
@@ -192,44 +222,103 @@ export default function RegisterDataPage() {
             </button>
           </div>
 
-          {scanned && files.length > 0 && (
-            <div className="table-wrap" style={{ marginTop: "0.75rem" }}>
-              <table>
-                <thead>
-                  <tr>
-                    <th></th>
-                    <th>File</th>
-                    <th>Type</th>
-                    <th>Size</th>
-                    <th>Chunk / crop id (optional)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {files.map((f, i) => (
-                    <tr key={f.file.name}>
-                      <td>
-                        <input
-                          type="checkbox"
-                          checked={f.selected}
-                          onChange={() => toggle(i)}
-                        />
-                      </td>
-                      <td>{f.file.name}</td>
-                      <td>{f.file.extension}</td>
-                      <td>{f.file.size} B</td>
-                      <td>
-                        <input
-                          value={f.chunk_id}
-                          onChange={(e) => setChunkId(i, e.target.value)}
-                          placeholder={f.file.name}
-                          disabled={!f.selected}
-                        />
-                      </td>
+          {scanned && rows.length > 0 && (
+            <>
+              <div className="row spread" style={{ marginTop: "0.75rem" }}>
+                <label className="field" style={{ marginBottom: 0 }}>
+                  <span>Label type for masks</span>
+                  <select
+                    value={labelType}
+                    onChange={(e) => setLabelType(e.target.value as LabelType)}
+                  >
+                    {LABEL_TYPES.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="row" style={{ alignSelf: "flex-end" }}>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => setAll(true)}
+                  >
+                    Select all
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => setAll(false)}
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+
+              <div className="table-wrap" style={{ marginTop: "0.75rem" }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th></th>
+                      <th>Image</th>
+                      <th>Mask (label)</th>
+                      <th>Chunk / crop id</th>
+                      <th></th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {rows.map((r, i) => (
+                      <tr key={`${r.image}:${i}`}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={r.selected}
+                            onChange={() => update(i, { selected: !r.selected })}
+                          />
+                        </td>
+                        <td>{r.image}</td>
+                        <td>
+                          <select
+                            value={r.mask}
+                            disabled={!r.selected}
+                            onChange={(e) => update(i, { mask: e.target.value })}
+                          >
+                            <option value={NO_MASK}>— image only —</option>
+                            {allFiles
+                              .filter((f) => f !== r.image)
+                              .map((f) => (
+                                <option key={f} value={f}>
+                                  {f}
+                                </option>
+                              ))}
+                          </select>
+                        </td>
+                        <td>
+                          <input
+                            value={r.chunk_id}
+                            disabled={!r.selected}
+                            onChange={(e) =>
+                              update(i, { chunk_id: e.target.value })
+                            }
+                            placeholder={r.image}
+                          />
+                        </td>
+                        <td>
+                          {r.detected ? (
+                            <span className="badge badge-green">pair</span>
+                          ) : r.mask ? (
+                            <span className="badge badge-blue">paired</span>
+                          ) : (
+                            <span className="badge badge-gray">image</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </div>
 

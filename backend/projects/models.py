@@ -40,6 +40,20 @@ class Project(models.Model):
         blank=True,
         related_name="created_projects",
     )
+
+    # Manager review gate: requester-registered data must be reviewed by a
+    # manager before its volumes can be split or assigned. Manager-registered
+    # data is reviewed on creation.
+    manager_reviewed = models.BooleanField(default=False)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reviewed_projects",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

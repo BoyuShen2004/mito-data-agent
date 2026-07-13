@@ -4,6 +4,18 @@ import { useAuth } from "../auth/AuthContext";
 import { homePathForRole } from "../routes/AppRoutes";
 import type { LoginPortal } from "../api/auth";
 
+// Standard accounts created by `python manage.py seed_dev`. Shown on the login
+// page in development only (Vite `import.meta.env.DEV`) as a convenience — this
+// block is stripped from production builds.
+const DEV_PASSWORD = "demo12345";
+const DEV_ACCOUNTS: { username: string; role: string; portal: LoginPortal }[] = [
+  { username: "manager", role: "Manager", portal: "annotator" },
+  { username: "alice", role: "Annotator", portal: "annotator" },
+  { username: "bob", role: "Annotator", portal: "annotator" },
+  { username: "carol", role: "Annotator", portal: "annotator" },
+  { username: "dave", role: "Annotator", portal: "annotator" },
+];
+
 export default function LoginPage() {
   const { login, user } = useAuth();
   const navigate = useNavigate();
@@ -12,6 +24,13 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const fillDevAccount = (account: (typeof DEV_ACCOUNTS)[number]) => {
+    setPortal(account.portal);
+    setUsername(account.username);
+    setPassword(DEV_PASSWORD);
+    setError(null);
+  };
 
   if (user) {
     navigate(homePathForRole(user.role), { replace: true });
@@ -127,6 +146,31 @@ export default function LoginPage() {
             Need an account? <Link to="/register">Create one</Link> as an
             annotator or a requester.
           </div>
+
+          {import.meta.env.DEV && (
+            <div className="dev-accounts">
+              <div className="dev-accounts-title">
+                Dev accounts — click to fill (password <code>{DEV_PASSWORD}</code>)
+              </div>
+              <div className="dev-accounts-list">
+                {DEV_ACCOUNTS.map((a) => (
+                  <button
+                    type="button"
+                    key={a.username}
+                    className="dev-chip"
+                    onClick={() => fillDevAccount(a)}
+                  >
+                    {a.username}
+                    <span className="dev-chip-role">{a.role}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="dev-accounts-note">
+                All use the Annotator tab. Run{" "}
+                <code>python manage.py seed_dev</code> if they don't exist yet.
+              </div>
+            </div>
+          )}
         </div>
       </main>
     </div>

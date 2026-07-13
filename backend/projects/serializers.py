@@ -10,6 +10,9 @@ class ProjectSerializer(serializers.ModelSerializer):
     created_by_username = serializers.CharField(
         source="created_by.username", read_only=True, default=""
     )
+    reviewed_by_username = serializers.CharField(
+        source="reviewed_by.username", read_only=True, default=""
+    )
     volume_count = serializers.IntegerField(source="volumes.count", read_only=True)
     task_count = serializers.IntegerField(source="tasks.count", read_only=True)
 
@@ -29,8 +32,18 @@ class ProjectSerializer(serializers.ModelSerializer):
             "deadline",
             "created_by",
             "created_by_username",
+            "manager_reviewed",
+            "reviewed_by",
+            "reviewed_by_username",
+            "reviewed_at",
             "volume_count",
             "task_count",
             "created_at",
         ]
-        read_only_fields = ["created_by", "created_at"]
+        read_only_fields = [
+            "created_by",
+            "created_at",
+            "manager_reviewed",
+            "reviewed_by",
+            "reviewed_at",
+        ]

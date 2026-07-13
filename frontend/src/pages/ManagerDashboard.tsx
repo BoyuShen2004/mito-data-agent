@@ -12,6 +12,7 @@ export default function ManagerDashboard() {
     (s, p) => s + p.volume_count,
     0,
   );
+  const pendingReview = (projects.data ?? []).filter((p) => !p.manager_reviewed);
 
   return (
     <>
@@ -37,10 +38,52 @@ export default function ManagerDashboard() {
           <div className="stat">{projects.data ? totalVolumes : "…"}</div>
         </div>
         <div className="card">
-          <div className="muted">Waiting for review</div>
+          <div className="muted">Datasets to approve</div>
+          <div className="stat">{projects.data ? pendingReview.length : "…"}</div>
+        </div>
+        <div className="card">
+          <div className="muted">Submissions to review</div>
           <div className="stat">{submissions.data?.length ?? "…"}</div>
         </div>
       </div>
+
+      {pendingReview.length > 0 && (
+        <div className="card" style={{ borderColor: "var(--warn)" }}>
+          <h3>Datasets awaiting your review</h3>
+          <p className="muted">
+            Requester-registered data must be reviewed before it can be
+            assigned.
+          </p>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Dataset</th>
+                  <th>Registered by</th>
+                  <th>Volumes</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {pendingReview.map((p) => (
+                  <tr key={p.id}>
+                    <td>
+                      <Link to={`/projects/${p.id}`}>
+                        {p.dataset || p.title}
+                      </Link>
+                    </td>
+                    <td>{p.created_by_username || "—"}</td>
+                    <td>{p.volume_count}</td>
+                    <td>
+                      <Link to={`/projects/${p.id}`}>Review</Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       <div className="card">
         <h3>Active projects</h3>

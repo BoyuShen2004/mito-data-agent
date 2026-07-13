@@ -37,7 +37,8 @@ export default function TaskAssignmentTable({
   if (rows.length === 0) {
     return (
       <p className="muted">
-        No tasks yet. Split a volume into tasks before assigning annotators.
+        No tasks yet. Use “Auto-assign volumes to annotators” above to create a
+        task per volume, or split a volume manually first.
       </p>
     );
   }

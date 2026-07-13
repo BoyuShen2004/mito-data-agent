@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from django.conf import settings
@@ -38,6 +39,83 @@ def _file_format_for(ext: str) -> str:
     if ext in (".tif", ".tiff"):
         return FileFormat.TIFF
     return FileFormat.OTHER
+
+
+# Filename tokens that mark a file as a mask/label vs an image, used to auto-pair
+# image + mask volumes that share a common base name in the same directory.
+MASK_TOKENS = {
+    "mask", "masks", "label", "labels", "seg", "segmentation", "segmentations",
+    "gt", "groundtruth", "annotation", "annotations", "ann", "lbl",
+}
+IMAGE_TOKENS = {
+    "image", "images", "img", "im", "raw", "data", "vol", "volume", "em", "grey",
+    "gray",
+}
+
+
+def _stem(name: str) -> str:
+    """Filename without its supported data extension."""
+    ext = matched_data_extension(name)
+    return name[: -len(ext)] if ext else name
+
+
+def _name_tokens(stem: str) -> list[str]:
+    return [t for t in re.split(r"[ _\-.]+", stem.lower()) if t]
+
+
+def _is_mask_name(name: str) -> bool:
+    return any(t in MASK_TOKENS for t in _name_tokens(_stem(name)))
+
+
+def _core_key(name: str, *, is_mask: bool) -> str:
+    """The shared identity of a volume with its role marker removed.
+
+    A mask's core drops mask tokens (``cortex1_mask`` -> ``cortex1``); an image's
+    core drops image tokens (``cortex1_image`` -> ``cortex1``, ``vol`` -> ``vol``)
+    so an image and its mask resolve to the same core and get paired.
+    """
+    tokens = _name_tokens(_stem(name))
+    drop = MASK_TOKENS if is_mask else IMAGE_TOKENS
+    kept = [t for t in tokens if t not in drop]
+    return "_".join(kept) if kept else _stem(name).lower()
+
+
+def detect_volume_pairs(filenames: list[str]) -> tuple[list[dict], list[str]]:
+    """Group filenames into ``(image, mask)`` pairs plus leftover unpaired files.
+
+    A mask is paired with the image whose core name matches after each side's
+    role markers are removed (e.g. ``_image``/``_mask``, ``_raw``/``_seg``, or a
+    bare name vs a ``_label`` suffix). Returns ``(pairs, unpaired)`` where each
+    pair is ``{"image", "mask", "base"}``.
+    """
+    images = sorted(n for n in filenames if not _is_mask_name(n))
+    masks = sorted(n for n in filenames if _is_mask_name(n))
+
+    images_by_core: dict[str, list[str]] = {}
+    for image in images:
+        images_by_core.setdefault(_core_key(image, is_mask=False), []).append(image)
+
+    pairs: list[dict] = []
+    used_images: set[str] = set()
+    used_masks: set[str] = set()
+    for mask in masks:
+        core = _core_key(mask, is_mask=True)
+        candidates = [i for i in images_by_core.get(core, []) if i not in used_images]
+        if candidates:
+            image = candidates[0]
+            used_images.add(image)
+            used_masks.add(mask)
+            pairs.append({"image": image, "mask": mask, "base": core})
+
+    # Images with no mask and masks with no image are surfaced as unpaired, so
+    # nothing silently disappears from the folder listing.
+    unpaired = [f for f in images if f not in used_images]
+    unpaired += [m for m in masks if m not in used_masks]
+
+    return (
+        sorted(pairs, key=lambda p: p["image"].lower()),
+        sorted(unpaired, key=str.lower),
+    )
 
 
 def resolve_hpc_directory(hpc_directory: str) -> Path:
@@ -91,7 +169,13 @@ def scan_hpc_directory(hpc_directory: str) -> dict:
                 "size": size,
             }
         )
-    return {"directory": _stored_path(directory), "files": files}
+    pairs, unpaired = detect_volume_pairs([f["name"] for f in files])
+    return {
+        "directory": _stored_path(directory),
+        "files": files,
+        "pairs": pairs,
+        "unpaired": unpaired,
+    }
 
 
 def register_dataset(
@@ -100,21 +184,32 @@ def register_dataset(
     dataset: str,
     volume: str,
     hpc_directory: str,
+    pairs: list[dict] | None = None,
     files: list[dict] | None = None,
     metadata: dict | None = None,
     project=None,
     annotation_type: str | None = None,
     label_type: str = LabelType.NONE,
     description: str = "",
+    reviewed: bool = False,
 ) -> tuple:
     """Register HPC file references as chunks/crops under a dataset + volume.
 
-    ``dataset`` and ``volume`` are required. Every file must be a supported
-    ``.tif``/``.tiff``/``.nii.gz`` file that exists in ``hpc_directory``. When
-    ``files`` is omitted, all supported files in the directory are registered.
+    ``dataset`` and ``volume`` are required. Every referenced file must be a
+    supported ``.tif``/``.tiff``/``.nii.gz`` file in ``hpc_directory``.
 
-    Returns ``(project, [Volume, ...])``. When ``project`` is given the chunks
-    are attached to it; otherwise a new project is created for the dataset.
+    Registration is flexible about image/mask pairing:
+
+    * ``pairs`` — explicit ``[{image, mask?, chunk_id?}, ...]`` entries. Each
+      becomes one volume; when ``mask`` is given it is stored as the label. This
+      lets a single image+mask pair be picked out of a folder of other volumes.
+    * ``files`` — image-only ``[{path|name, chunk_id?}, ...]`` entries (no masks).
+    * neither — the directory is auto-scanned and **all detected image+mask
+      pairs plus any unpaired images** are registered.
+
+    ``label_type`` is applied to volumes that get a mask (defaulting to
+    ``prediction`` so they become proofreading tasks). Returns ``(project,
+    [Volume, ...])``; a new project is created unless ``project`` is given.
     """
     from projects.services import create_project
 
@@ -127,32 +222,57 @@ def register_dataset(
 
     directory = resolve_hpc_directory(hpc_directory)
 
-    # Resolve the list of files to register (explicit selection or full scan).
-    if files:
-        entries = []
+    def _resolve(raw_name: str, kind: str = "file"):
+        name = (raw_name or "").strip()
+        if not name:
+            raise DataRegistrationError(f"A {kind} name is required.")
+        base = Path(name).name  # basenames only; no path traversal
+        ext = matched_data_extension(base)
+        if not ext:
+            raise DataRegistrationError(
+                f"Unsupported file type: {base}. Only .tif, .tiff and "
+                ".nii.gz are accepted."
+            )
+        candidate = (directory / base).resolve()
+        if not candidate.is_file():
+            raise DataRegistrationError(f"File not found in directory: {base}")
+        return base, candidate, ext
+
+    # Build the normalised list of entries:
+    #   (image_base, image_path, image_ext, mask_base|None, mask_path|None, chunk_id)
+    entries: list[tuple] = []
+    if pairs:
+        for item in pairs:
+            image_base, image_path, image_ext = _resolve(item.get("image"), "image")
+            mask_name = (item.get("mask") or "").strip()
+            if mask_name:
+                mask_base, mask_path, _ = _resolve(mask_name, "mask")
+            else:
+                mask_base = mask_path = None
+            entries.append(
+                (image_base, image_path, image_ext, mask_base, mask_path,
+                 item.get("chunk_id", ""))
+            )
+    elif files:
         for item in files:
-            raw_name = (item.get("path") or item.get("name") or "").strip()
-            if not raw_name:
-                raise DataRegistrationError("Each file needs a name or path.")
-            base = Path(raw_name).name  # basenames only; no traversal
-            candidate = (directory / base).resolve()
-            ext = matched_data_extension(base)
-            if not ext:
-                raise DataRegistrationError(
-                    f"Unsupported file type: {base}. Only .tif, .tiff and "
-                    ".nii.gz are accepted."
-                )
-            if not candidate.is_file():
-                raise DataRegistrationError(
-                    f"File not found in directory: {base}"
-                )
-            entries.append((base, candidate, ext, item.get("chunk_id", "")))
+            image_base, image_path, image_ext = _resolve(
+                item.get("path") or item.get("name"), "image"
+            )
+            entries.append(
+                (image_base, image_path, image_ext, None, None,
+                 item.get("chunk_id", ""))
+            )
     else:
-        scanned = scan_hpc_directory(hpc_directory)["files"]
-        entries = [
-            (f["name"], (directory / f["name"]).resolve(), f["extension"], "")
-            for f in scanned
-        ]
+        scanned = scan_hpc_directory(hpc_directory)
+        for pair in scanned["pairs"]:
+            image_base, image_path, image_ext = _resolve(pair["image"], "image")
+            mask_base, mask_path, _ = _resolve(pair["mask"], "mask")
+            entries.append(
+                (image_base, image_path, image_ext, mask_base, mask_path, "")
+            )
+        for name in scanned["unpaired"]:
+            image_base, image_path, image_ext = _resolve(name, "image")
+            entries.append((image_base, image_path, image_ext, None, None, ""))
 
     if not entries:
         raise DataRegistrationError(
@@ -167,16 +287,24 @@ def register_dataset(
             description=description,
             annotation_type=annotation_type,
             metadata=metadata or {},
+            reviewed=reviewed,
         )
 
+    # A provided mask implies a real label; default it to a proofreadable type.
+    mask_label_type = label_type
+    if not mask_label_type or mask_label_type == LabelType.NONE:
+        mask_label_type = LabelType.PREDICTION
+
     created = []
-    for base, abs_path, ext, chunk_id in entries:
+    for image_base, image_path, image_ext, _mask_base, mask_path, chunk_id in entries:
+        has_mask = mask_path is not None
         vol = register_volume(
             project=project,
-            name=chunk_id or base,
-            image_path=_stored_path(abs_path),
-            label_type=label_type,
-            file_format=_file_format_for(ext),
+            name=chunk_id or image_base,
+            image_path=_stored_path(image_path),
+            label_path=_stored_path(mask_path) if has_mask else "",
+            label_type=mask_label_type if has_mask else LabelType.NONE,
+            file_format=_file_format_for(image_ext),
         )
         vol.source_volume = volume
         vol.chunk_id = chunk_id

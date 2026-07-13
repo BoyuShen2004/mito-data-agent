@@ -8,7 +8,9 @@ from accounts.models import AnnotatorProfile
 from annotation.services import (
     assign_task_to_annotator,
     assign_tasks_rule_based,
+    auto_assign_project,
     calculate_annotator_workload,
+    ensure_volume_tasks,
     review_submission,
     submit_annotation,
 )
@@ -156,3 +158,73 @@ class AssignmentCapacityTests(TestCase):
         result = assign_tasks_rule_based(project=self.project)
         self.assertEqual(result["assigned"], 0)
         self.assertEqual(calculate_annotator_workload(project=self.project), [])
+
+    def test_even_distribution_across_annotators(self):
+        # 4 tasks, 2 annotators -> 2 each (balanced, not piled on one).
+        create_tasks_from_volume(self.volume, z_step=16)
+        a = make_annotator("bal_a", max_active=10)
+        b = make_annotator("bal_b", max_active=10)
+        result = assign_tasks_rule_based(project=self.project)
+        self.assertEqual(result["assigned"], 4)
+        self.assertEqual(result["per_user"][a.id], 2)
+        self.assertEqual(result["per_user"][b.id], 2)
+
+
+@override_settings(MITO_DATA_ROOT=_TMP_ROOT)
+class AutoAssignVolumeTests(TestCase):
+    def _volume(self, project, name, shape_z=32, label_type=LabelType.NONE):
+        vol = register_volume(
+            project=project, name=name, image_path=f"{name}.tiff",
+            label_type=label_type, autodetect_shape=False,
+        )
+        vol.shape_x, vol.shape_y, vol.shape_z = 16, 16, shape_z
+        vol.save()
+        return vol
+
+    def test_ensure_volume_tasks_one_task_per_volume(self):
+        project = create_project(title="P", reviewed=True)
+        self._volume(project, "v1")
+        self._volume(project, "v2")
+        result = ensure_volume_tasks(project)
+        self.assertEqual(result["created"], 2)
+        tasks = AnnotationTask.objects.filter(project=project)
+        self.assertEqual(tasks.count(), 2)
+        # Each task spans its whole volume (no frame splitting).
+        for t in tasks:
+            self.assertEqual(t.z_start, 0)
+            self.assertEqual(t.z_end, t.volume.shape_z)
+
+    def test_volume_without_shape_is_skipped(self):
+        project = create_project(title="P", reviewed=True)
+        register_volume(
+            project=project, name="noshape", image_path="noshape.tiff",
+            autodetect_shape=False,
+        )
+        result = ensure_volume_tasks(project)
+        self.assertEqual(result, {"created": 0, "skipped": 1})
+
+    def test_auto_assign_distributes_volumes_evenly(self):
+        # 8 volumes, 4 annotators -> 2 volumes each.
+        project = create_project(title="Eight", reviewed=True)
+        for i in range(8):
+            self._volume(project, f"vol{i}")
+        annotators = [make_annotator(f"ann{i}", max_active=10) for i in range(4)]
+
+        summary = auto_assign_project(project)
+
+        self.assertTrue(summary["reviewed"])
+        self.assertEqual(summary["created_tasks"], 8)
+        self.assertEqual(summary["assigned"], 8)
+        for ann in annotators:
+            self.assertEqual(summary["per_user"][ann.id], 2)
+
+    def test_auto_assign_blocked_until_reviewed(self):
+        project = create_project(title="Pending")  # reviewed defaults to False
+        self._volume(project, "v1")
+        make_annotator("solo", max_active=10)
+
+        summary = auto_assign_project(project)
+
+        self.assertFalse(summary["reviewed"])
+        self.assertEqual(summary["assigned"], 0)
+        self.assertEqual(AnnotationTask.objects.filter(project=project).count(), 0)

@@ -29,6 +29,10 @@ export interface Project {
   deadline: string | null;
   created_by: number | null;
   created_by_username: string;
+  manager_reviewed: boolean;
+  reviewed_by: number | null;
+  reviewed_by_username: string;
+  reviewed_at: string | null;
   volume_count: number;
   task_count: number;
   created_at: string;

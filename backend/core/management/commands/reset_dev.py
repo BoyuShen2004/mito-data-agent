@@ -1,9 +1,10 @@
-"""One-shot local reset: clear data, apply migrations, reseed mock data.
+"""One-shot local reset: clear data, apply migrations, reseed accounts.
 
     python manage.py reset_dev
 
 Convenience wrapper around ``clear_dev_data`` + ``migrate`` + ``seed_dev`` for a
-clean, reproducible development database. Use ``--no-migrate`` to skip migrations.
+clean, reproducible development database (standard accounts, no data). Use
+``--no-migrate`` to skip migrations.
 """
 
 from django.conf import settings
@@ -34,9 +35,11 @@ class Command(BaseCommand):
             )
 
         self.stdout.write(self.style.MIGRATE_HEADING("1/3 Clearing data"))
-        call_command("clear_dev_data", "--no-input", "--files", *(
-            ["--force"] if options["force"] else []
-        ))
+        call_command(
+            "clear_dev_data",
+            "--no-input",
+            *(["--force"] if options["force"] else []),
+        )
 
         if not options["no_migrate"]:
             self.stdout.write(self.style.MIGRATE_HEADING("2/3 Applying migrations"))
@@ -44,7 +47,7 @@ class Command(BaseCommand):
         else:
             self.stdout.write("2/3 Skipping migrations (--no-migrate)")
 
-        self.stdout.write(self.style.MIGRATE_HEADING("3/3 Seeding mock data"))
+        self.stdout.write(self.style.MIGRATE_HEADING("3/3 Seeding accounts"))
         call_command("seed_dev")
 
         self.stdout.write(self.style.SUCCESS("Development environment reset."))

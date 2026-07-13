@@ -1,13 +1,12 @@
-"""Load the standard mock dataset for local development.
+"""Create the standard development accounts.
 
     python manage.py seed_dev
 
-Creates the standard accounts (manager / alice / bob / lab_requester, password
-"demo12345"), registers a demo dataset from mock TIFF volumes, splits a volume
-into tasks, assigns a couple, and leaves one submission awaiting review.
+Creates one manager and four annotator accounts (password "demo12345"). It does
+**not** register any datasets, volumes, or tasks — developers register data
+manually through the app (as the manager, or by signing up a requester).
 
-Safe to run repeatedly (idempotent for the accounts/dataset). Use ``--fresh`` to
-wipe existing development data first.
+Safe to run repeatedly. Use ``--fresh`` to wipe existing development data first.
 """
 
 from django.core.management import call_command
@@ -17,29 +16,35 @@ from core.dev_data import DEMO_PASSWORD, seed_standard_data
 
 
 class Command(BaseCommand):
-    help = "Load the standard mock dataset used during development."
+    help = "Create the standard development accounts (manager + annotators, no data)."
 
     def add_arguments(self, parser):
         parser.add_argument(
             "--fresh",
             action="store_true",
-            help="Clear existing development data before seeding.",
+            help="Clear existing development data before seeding accounts.",
         )
 
     def handle(self, *args, **options):
         if options["fresh"]:
-            call_command("clear_dev_data", "--no-input", "--files")
+            call_command("clear_dev_data", "--no-input")
 
         result = seed_standard_data(log=self.stdout.write)
 
         self.stdout.write(
             self.style.SUCCESS(
-                f"Seeded project #{result['project_id']} "
-                f"({result['volumes']} volume(s), {result['tasks']} task(s))."
+                f"Ready: {len(result['managers'])} manager, "
+                f"{len(result['annotators'])} annotator account(s)."
             )
         )
         self.stdout.write(
-            "Logins (password "
+            "Manager: "
+            + ", ".join(result["managers"])
+            + " · Annotators: "
+            + ", ".join(result["annotators"])
+            + " · password "
             + self.style.WARNING(DEMO_PASSWORD)
-            + "): manager, alice, bob (annotators), lab_requester (requester)."
+        )
+        self.stdout.write(
+            "No data is pre-registered — register datasets manually in the app."
         )

@@ -53,12 +53,13 @@ Prefer plain pip? Use Python ≥ 3.11 and Node ≥ 18, then
 `pip install -r requirements.txt`. There is **no** separate `setup.sh` to run —
 `./dev.sh` handles everything routine.
 
-Optionally load the standard mock dataset for a ready-to-click walkthrough:
+Create the standard development accounts (no data is pre-registered — you
+register datasets yourself through the app):
 
 ```bash
 cd backend && python manage.py seed_dev
-# creates (password demo12345): manager (manager), alice + bob (annotators),
-# lab_requester (requester), a registered demo dataset, tasks, and a submission.
+# creates (password demo12345): manager (manager) + alice, bob, carol, dave
+# (annotators). Register data as the manager, or sign up a requester in the app.
 ```
 
 See **Developer commands** below for clearing and resetting dev data.
@@ -176,16 +177,18 @@ Developer data management (run from `backend/`, DEBUG-guarded):
 
 ```bash
 python manage.py dev_status            # show counts of current data
-python manage.py seed_dev              # load the standard mock dataset
-python manage.py seed_dev --fresh      # clear first, then seed
+python manage.py seed_dev              # create standard accounts (no data)
+python manage.py seed_dev --fresh      # clear existing data first, then seed accounts
 python manage.py clear_dev_data        # delete dev data (prompts; --no-input to skip)
-python manage.py clear_dev_data --files --keep-users
-python manage.py reset_dev             # clear + migrate + reseed (one shot)
+python manage.py clear_dev_data --keep-users
+python manage.py reset_dev             # clear + migrate + reseed accounts (one shot)
 ```
 
+`seed_dev` only creates accounts (one manager + four annotators); it never
+pre-registers datasets — developers do that manually in the app. Automated
+tests build their own throwaway data and are independent of these commands.
 `clear_dev_data` / `reset_dev` always preserve superusers and refuse to run when
-`DEBUG=False` unless given `--force`. `--files` also removes the mock TIFF
-volumes written under `MITO_DATA_ROOT/dev_mock/`.
+`DEBUG=False` unless given `--force`.
 
 ## REST API (selected)
 

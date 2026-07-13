@@ -1,13 +1,13 @@
-"""Delete development / mock data created during local development.
+"""Delete development data created during local development.
 
     python manage.py clear_dev_data            # prompts for confirmation
     python manage.py clear_dev_data --no-input  # skip the prompt
-    python manage.py clear_dev_data --files     # also remove mock TIFF files
     python manage.py clear_dev_data --keep-users
 
-Removes all projects, volumes, tasks, submissions, reviews, and institutions.
-Non-superuser accounts are removed too (superusers are always preserved). Guarded
-against non-DEBUG environments unless ``--force`` is given.
+Removes all projects, volumes, tasks, submissions, reviews, and institutions
+(and the files the app stored for them). Non-superuser accounts are removed too
+(superusers are always preserved). Guarded against non-DEBUG environments unless
+``--force`` is given.
 """
 
 from django.conf import settings
@@ -29,11 +29,6 @@ class Command(BaseCommand):
             "--keep-users",
             action="store_true",
             help="Keep user accounts (delete only project/annotation data).",
-        )
-        parser.add_argument(
-            "--files",
-            action="store_true",
-            help="Also delete the mock TIFF file directory under MITO_DATA_ROOT.",
         )
         parser.add_argument(
             "--force",
@@ -59,7 +54,6 @@ class Command(BaseCommand):
 
         clear_dev_data(
             keep_users=options["keep_users"],
-            remove_files=options["files"],
             log=self.stdout.write,
         )
         self.stdout.write(self.style.SUCCESS("Development data cleared."))

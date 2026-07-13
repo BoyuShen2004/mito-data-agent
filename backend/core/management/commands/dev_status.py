@@ -19,9 +19,13 @@ class Command(BaseCommand):
         width = max(len(k) for k in summary)
         for key, value in summary.items():
             self.stdout.write(f"  {key.ljust(width)}  {value}")
-        if summary["projects"] == 0 and summary["tasks"] == 0:
+        if summary["users"] == 0:
             self.stdout.write(
-                "\nNo project data. Run "
+                "\nNo accounts. Run "
                 + self.style.WARNING("python manage.py seed_dev")
-                + " to load the standard mock dataset."
+                + " to create the standard manager + annotator accounts."
+            )
+        elif summary["projects"] == 0:
+            self.stdout.write(
+                "\nNo registered data yet — register datasets manually in the app."
             )

@@ -44,7 +44,8 @@ ALLOWED_HOSTS = [
 # --- Application definition ------------------------------------------------
 
 INSTALLED_APPS = [
-    "django.contrib.admin",
+    # Manager Admin site (replaces the default django.contrib.admin site).
+    "core.admin_apps.ManagerAdminConfig",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",

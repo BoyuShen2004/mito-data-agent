@@ -86,6 +86,31 @@ def assign_tasks_rule_based(project=None) -> dict:
     }
 
 
+def create_whole_volume_task(volume):
+    """Create one task spanning a volume's full extent, if it has none.
+
+    Returns the created :class:`AnnotationTask`, or ``None`` when the volume
+    already has tasks (duplicate-safe) or has no detectable shape yet.
+    """
+    from volumes.services import infer_task_type
+
+    if volume.tasks.exists():
+        return None
+    if not volume.shape_z:
+        return None
+    return AnnotationTask.objects.create(
+        project=volume.project,
+        volume=volume,
+        z_start=0,
+        z_end=volume.shape_z,
+        y_start=0,
+        y_end=volume.shape_y or 0,
+        x_start=0,
+        x_end=volume.shape_x or 0,
+        task_type=infer_task_type(volume.label_type),
+    )
+
+
 def ensure_volume_tasks(project) -> dict:
     """Create one whole-volume annotation task per volume that has none.
 
@@ -97,28 +122,15 @@ def ensure_volume_tasks(project) -> dict:
 
     Returns ``{"created": n, "skipped": n}``.
     """
-    from volumes.services import infer_task_type
-
     created = 0
     skipped = 0
     for volume in project.volumes.all():
         if volume.tasks.exists():
             continue
-        if not volume.shape_z:
+        if create_whole_volume_task(volume) is not None:
+            created += 1
+        else:
             skipped += 1
-            continue
-        AnnotationTask.objects.create(
-            project=project,
-            volume=volume,
-            z_start=0,
-            z_end=volume.shape_z,
-            y_start=0,
-            y_end=volume.shape_y or 0,
-            x_start=0,
-            x_end=volume.shape_x or 0,
-            task_type=infer_task_type(volume.label_type),
-        )
-        created += 1
     return {"created": created, "skipped": skipped}
 
 

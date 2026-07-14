@@ -1,5 +1,9 @@
 # REST API reference
 
+> Part of the [docs](README.md). To add or change an endpoint, see
+> [codemap.md](codemap.md#common-recipes-end-to-end); the view/serializer files
+> per feature are listed there.
+
 Base URL: `/api`. All endpoints except login/register require a token header:
 
 ```

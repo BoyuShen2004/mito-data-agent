@@ -1,4 +1,3 @@
-from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -9,7 +8,7 @@ from core.permissions import CanRegisterData
 
 from .models import Project
 from .serializers import ProjectSerializer
-from .services import calculate_project_progress, create_project
+from .services import calculate_project_progress, create_project, mark_project_reviewed
 
 
 class ProjectViewSet(viewsets.ModelViewSet):
@@ -70,10 +69,5 @@ class ProjectViewSet(viewsets.ModelViewSet):
             )
         project = self.get_object()
         reviewed = request.data.get("reviewed", True)
-        project.manager_reviewed = bool(reviewed)
-        project.reviewed_by = request.user if reviewed else None
-        project.reviewed_at = timezone.now() if reviewed else None
-        project.save(
-            update_fields=["manager_reviewed", "reviewed_by", "reviewed_at"]
-        )
+        mark_project_reviewed(project, reviewer=request.user, reviewed=bool(reviewed))
         return Response(ProjectSerializer(project).data)

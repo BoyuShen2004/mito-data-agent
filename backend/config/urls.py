@@ -1,7 +1,8 @@
 """URL configuration for the Mito Data Agent project.
 
-The user-facing app is a React SPA that talks to the REST API under ``/api/``.
-Django admin remains available at ``/admin/`` for internal debugging.
+The React SPA (under ``/api/``) serves annotators and requesters. Managers run
+their full daily workflow through the Manager Admin at ``/admin/`` (see
+``core.admin_site.ManagerAdminSite`` and ``docs/admin.md``).
 """
 
 from django.conf import settings

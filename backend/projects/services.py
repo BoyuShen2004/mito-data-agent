@@ -55,6 +55,19 @@ def create_project(
     return Project.objects.create(**kwargs)
 
 
+def mark_project_reviewed(project: Project, reviewer=None, reviewed: bool = True) -> Project:
+    """Approve (or un-approve) a project so its volumes can be split/assigned.
+
+    Central review-state transition reused by the DRF endpoint and the admin
+    action, keeping the reviewer/timestamp bookkeeping in one place.
+    """
+    project.manager_reviewed = bool(reviewed)
+    project.reviewed_by = reviewer if reviewed else None
+    project.reviewed_at = timezone.now() if reviewed else None
+    project.save(update_fields=["manager_reviewed", "reviewed_by", "reviewed_at"])
+    return project
+
+
 def calculate_project_progress(project: Project) -> dict:
     """Return counts and a completion percentage for a project's tasks."""
     tasks = project.tasks.all()

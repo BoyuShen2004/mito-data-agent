@@ -5,6 +5,50 @@ relative to the repo root. Read [architecture.md](architecture.md) first if you
 haven't — the one thing to remember is that **business logic lives in
 `<app>/services.py`**, and views/admin/pages are thin wrappers around it.
 
+## One replaceable feature → one folder
+
+Each integration lives behind a small provider interface (`interfaces.py` +
+`registry.py` + `adapters/`), selected by a `settings.MITO_*` value. The domain
+services call the registry; **admin/API/React never import an adapter directly.**
+
+```
+I want to change online proofreading:
+→ backend/annotation/proofreading/           (interface, registry, adapters/)
+→ frontend/src/features/proofreading/
+
+I want to change QA / quality control:
+→ backend/annotation/quality_control/         (adapters/basic.py is the default)
+
+I want to change visualization (e.g. Neuroglancer):
+→ backend/annotation/visualization/
+→ frontend/src/features/visualization/        (add when a client viewer lands)
+
+I want to change SLURM / HPC submission:
+→ backend/processing/adapters/slurm.py
+   (local/mock: backend/processing/adapters/local.py)
+
+I want to change how processing jobs are dispatched:
+→ backend/processing/services.py
+→ backend/processing/management/commands/run_processing_dispatcher.py
+
+I want to change publication (MitoVerse / Hugging Face):
+→ backend/annotation/publishing/
+
+I want to change the New / To Proofread / Done mapping:
+→ backend/core/lifecycle.py
+→ frontend/src/features/lifecycle/
+
+I want to change display terminology (Requester → Institution, etc.):
+→ backend/core/labels.py
+→ frontend/src/labels.ts
+```
+
+Provider selection settings (all in `config/settings.py`, overridable via env):
+`MITO_QC_PROVIDER`, `MITO_PROOFREADING_PROVIDER`, `MITO_VISUALIZATION_PROVIDER`,
+`MITO_PUBLISHING_PROVIDER`, `MITO_PROCESSING_BACKEND`.
+
+---
+
 If you only remember one table, remember this one:
 
 | I want to change… | Go to |
@@ -75,6 +119,25 @@ If you only remember one table, remember this one:
 | Intermediate action forms (assign / review-with-comment) | `backend/templates/admin/annotation/*.html` + the action in `backend/annotation/admin.py` |
 | Dashboard layout | `backend/templates/admin/manager_index.html` |
 
+### Lifecycle, workflow types, providers, processing
+| Feature | File(s) |
+| --- | --- |
+| New / To Proofread / Done mapping (classify project/volume/task, counts, filter) | `backend/core/lifecycle.py` |
+| Workflow type (annotation / proofreading / segmentation) | `backend/core/choices.py` (`WorkflowType`), `backend/projects/models.py` (`workflow_type`), `projects/services.py` (`resolve_workflow_type`) |
+| Display terminology (Requester → Institution) | `backend/core/labels.py` (mirror `frontend/src/labels.ts`) |
+| Lifecycle REST: `?lifecycle=` filter, `/api/projects/lifecycle-counts/` | `backend/projects/api.py` |
+| Lifecycle admin filter + dashboard metrics | `backend/projects/admin.py` (`LifecycleFilter`), `backend/core/admin_site.py` |
+| QC provider (default = basic file checks) | `backend/annotation/quality_control/` |
+| Proofreading provider (launch/download; view vs edit) | `backend/annotation/proofreading/`; service `get_task_proofreading_info` |
+| Visualization provider (Neuroglancer viewer) | `backend/annotation/visualization/`; service `get_visualization_state` |
+| Publishing provider (placeholder / MitoVerse stub) | `backend/annotation/publishing/` |
+| ProcessingJob model / fields | `backend/processing/models.py` + `core/choices.py` (`ProcessingJob*`) |
+| Processing backends (local / SLURM) | `backend/processing/adapters/{local,slurm}.py`, registry `processing/registry.py` |
+| Job creation / dispatch / retry / cancel | `backend/processing/services.py` |
+| Dispatcher command | `backend/processing/management/commands/run_processing_dispatcher.py` |
+| Processing REST + admin | `backend/processing/api.py`, `backend/processing/admin.py` |
+| Proofreading/visualization task endpoints | `backend/annotation/api.py` (`TaskProofreadingView`, `TaskVisualizationView`) |
+
 ### Plumbing
 | Feature | File(s) |
 | --- | --- |
@@ -89,6 +152,10 @@ If you only remember one table, remember this one:
 
 | Feature | File(s) |
 | --- | --- |
+| Feature modules (replaceable UI features) | `frontend/src/features/{lifecycle,proofreading}/` |
+| New/To Proofread/Done tabs + counts | `frontend/src/features/lifecycle/` |
+| "Open Proofreading Tool" / download descriptor | `frontend/src/features/proofreading/` |
+| Display labels (Institution, lifecycle, workflow) | `frontend/src/labels.ts` |
 | Add / change a page | `frontend/src/pages/*` |
 | Route table & role-based redirects | `frontend/src/routes/AppRoutes.tsx` (`effectiveRole`, `homePathForRole`) |
 | Top navigation (per role) | `frontend/src/components/Navbar.tsx` |

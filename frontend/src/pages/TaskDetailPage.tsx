@@ -4,6 +4,7 @@ import { useAsync } from "../hooks/useAsync";
 import { useAuth } from "../auth/AuthContext";
 import StatusBadge from "../components/StatusBadge";
 import MetadataCard from "../components/MetadataCard";
+import ProofreadingLaunch from "../features/proofreading/ProofreadingLaunch";
 
 export default function TaskDetailPage() {
   const { id } = useParams();
@@ -87,6 +88,8 @@ export default function TaskDetailPage() {
       </div>
 
       <MetadataCard metadata={t.project_metadata} />
+
+      {(mine || isManager) && <ProofreadingLaunch taskId={t.id} />}
 
       {canSubmit && (
         <div className="card">

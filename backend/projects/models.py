@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.db import models
 
-from core.choices import AnnotationType, ProjectStatus
+from core.choices import AnnotationType, ProjectStatus, WorkflowType
 
 
 class Project(models.Model):
@@ -28,6 +28,14 @@ class Project(models.Model):
         max_length=30,
         choices=AnnotationType.choices,
         default=AnnotationType.INSTANCE,
+    )
+    # The high-level pipeline requested for this dataset (annotation /
+    # proofreading / segmentation). Shares the same models and services; drives
+    # only configuration and service-layer branching, not a separate pipeline.
+    workflow_type = models.CharField(
+        max_length=20,
+        choices=WorkflowType.choices,
+        default=WorkflowType.ANNOTATION,
     )
     status = models.CharField(
         max_length=20, choices=ProjectStatus.choices, default=ProjectStatus.DRAFT

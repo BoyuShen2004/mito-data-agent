@@ -21,6 +21,8 @@ from .serializers import (
 from .services import (
     assign_task_to_annotator,
     auto_assign_project,
+    get_task_proofreading_info,
+    get_visualization_state,
     review_submission,
     submit_annotation,
 )
@@ -153,6 +155,48 @@ class MyCompletedTasksView(generics.ListAPIView):
             )
             .select_related("volume", "project")
         )
+
+
+class TaskProofreadingView(APIView):
+    """Return launch info for a task's proofreading tool (view/edit/download).
+
+    Accessible to managers and the annotator the task is assigned to. Delegates
+    to the configured proofreading provider via the service layer.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        task = get_object_or_404(
+            AnnotationTask.objects.select_related("volume", "project"), pk=pk
+        )
+        if not _can_access_task(request.user, task):
+            return Response(
+                {"detail": "This task is not assigned to you."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return Response(get_task_proofreading_info(task))
+
+
+class TaskVisualizationView(APIView):
+    """Return viewer URL + state for a task's volume. Manager or assignee."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        task = get_object_or_404(
+            AnnotationTask.objects.select_related("volume", "project"), pk=pk
+        )
+        if not _can_access_task(request.user, task):
+            return Response(
+                {"detail": "This task is not assigned to you."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return Response(get_visualization_state(task))
+
+
+def _can_access_task(user, task) -> bool:
+    return is_manager(user) or task.assigned_to_id == user.id
 
 
 class SubmitTaskView(APIView):

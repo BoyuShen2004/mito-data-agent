@@ -4,6 +4,11 @@ from rest_framework.response import Response
 
 from accounts.roles import is_manager
 from annotation.services import calculate_annotator_workload
+from core.lifecycle import (
+    Lifecycle,
+    filter_projects_by_lifecycle,
+    project_lifecycle_counts,
+)
 from core.permissions import CanRegisterData
 
 from .models import Project
@@ -24,10 +29,14 @@ class ProjectViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = Project.objects.select_related("institution", "created_by").all()
-        if is_manager(self.request.user):
-            return qs
-        # Requesters only see their own projects.
-        return qs.filter(created_by=self.request.user)
+        if not is_manager(self.request.user):
+            # Requesters (Institutions) only see their own projects.
+            qs = qs.filter(created_by=self.request.user)
+        # Optional lifecycle filter: ?lifecycle=new|to_proofread|done.
+        lifecycle = self.request.query_params.get("lifecycle")
+        if lifecycle in Lifecycle.values:
+            qs = filter_projects_by_lifecycle(qs, lifecycle)
+        return qs
 
     def perform_create(self, serializer):
         data = serializer.validated_data
@@ -38,6 +47,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
             description=data.get("description", ""),
             annotation_target=data.get("annotation_target", "mitochondria"),
             annotation_type=data.get("annotation_type"),
+            workflow_type=data.get("workflow_type"),
             deadline=data.get("deadline"),
             status=data.get("status"),
             dataset=data.get("dataset", ""),
@@ -46,6 +56,19 @@ class ProjectViewSet(viewsets.ModelViewSet):
             reviewed=is_manager(self.request.user),
         )
         serializer.instance = project
+
+    @action(detail=False, methods=["get"], url_path="lifecycle-counts")
+    def lifecycle_counts(self, request):
+        """Return {new, to_proofread, done} counts over the caller's projects.
+
+        Respects the same visibility rules as the list endpoint: managers see
+        every project, Institutions see only their own.
+        """
+        # Bypass any ?lifecycle= filter so every bucket is counted.
+        qs = Project.objects.select_related("institution", "created_by")
+        if not is_manager(request.user):
+            qs = qs.filter(created_by=request.user)
+        return Response(project_lifecycle_counts(qs))
 
     @action(detail=True, methods=["get"])
     def summary(self, request, pk=None):

@@ -4,6 +4,18 @@
 {% if dashboard_metrics %}
 <div class="module" id="manager-dashboard">
   <h2>Operational dashboard</h2>
+  {% if lifecycle_metrics %}
+  <h3 class="mda-subhead">Data lifecycle</h3>
+  <div class="mda-metrics">
+    {% for m in lifecycle_metrics %}
+      <a class="mda-metric mda-metric-lifecycle" href="{{ m.url }}">
+        <span class="mda-metric-value">{{ m.value }}</span>
+        <span class="mda-metric-label">{{ m.label }}</span>
+      </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+  <h3 class="mda-subhead">Workflow</h3>
   <div class="mda-metrics">
     {% for m in dashboard_metrics %}
       <a class="mda-metric{% if m.warn %} mda-metric-warn{% endif %}" href="{{ m.url }}">
@@ -19,6 +31,16 @@
     grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
     gap: 12px;
     padding: 12px;
+  }
+  #manager-dashboard .mda-subhead {
+    margin: 8px 0 0 12px;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--body-quiet-color, #666);
+  }
+  #manager-dashboard .mda-metric-lifecycle {
+    border-color: var(--link-fg, #417690);
   }
   #manager-dashboard .mda-metric {
     display: flex;

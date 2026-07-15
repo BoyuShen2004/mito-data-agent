@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import os
-
-from django.conf import settings
 from django.db import transaction
 from django.db.models import Count, Q
 from django.utils import timezone
@@ -185,46 +182,21 @@ def assign_task_to_annotator(task: AnnotationTask, *, annotator) -> AnnotationTa
 # --- Submission + QC -------------------------------------------------------
 
 def run_basic_qc(submission: AnnotationSubmission) -> dict:
-    """Run simple checks on a submission and persist qc_status/qc_report.
+    """Run the configured QC provider on a submission and persist the result.
 
-    Checks: file present, non-zero size, allowed extension, linked to a task.
+    The checks themselves live behind the modular QC provider
+    (``annotation.quality_control``); this function selects the provider, maps
+    its structured report to a :class:`~core.choices.QCStatus`, and saves both.
+    The default ``basic`` provider preserves the original file-level checks
+    (linked to a task, present, non-empty, allowed extension).
     """
-    report = {"checks": [], "errors": [], "warnings": []}
+    from .quality_control.registry import get_qc_provider
 
-    def check(name, ok, message="", level="errors"):
-        report["checks"].append({"name": name, "ok": bool(ok)})
-        if not ok:
-            report[level].append(message or name)
+    report = get_qc_provider().validate_submission(submission)
 
-    linked = submission.task_id is not None
-    check("linked_to_task", linked, "Submission is not linked to a task")
-
-    field = submission.label_file
-    exists = bool(field) and field.storage.exists(field.name)
-    check("file_exists", exists, "Label file does not exist on storage")
-
-    size = 0
-    if exists:
-        try:
-            size = field.size
-        except (OSError, ValueError):
-            size = 0
-    check("non_empty", size > 0, "Label file is empty")
-
-    name = field.name if field else ""
-    ext = _matched_extension(name)
-    check(
-        "allowed_extension",
-        bool(ext),
-        f"Extension not allowed for '{os.path.basename(name)}'",
-    )
-
-    report["file_size"] = size
-    report["extension"] = ext
-
-    if report["errors"]:
+    if report.get("errors"):
         status = QCStatus.FAILED
-    elif report["warnings"]:
+    elif report.get("warnings"):
         status = QCStatus.WARNING
     else:
         status = QCStatus.PASSED
@@ -233,14 +205,6 @@ def run_basic_qc(submission: AnnotationSubmission) -> dict:
     submission.qc_report = report
     submission.save(update_fields=["qc_status", "qc_report"])
     return report
-
-
-def _matched_extension(name: str) -> str:
-    lower = name.lower()
-    for ext in sorted(settings.MITO_ALLOWED_LABEL_EXTENSIONS, key=len, reverse=True):
-        if lower.endswith(ext):
-            return ext
-    return ""
 
 
 def submit_annotation(
@@ -308,6 +272,41 @@ def request_revision(submission, *, reviewer=None, comments="") -> ReviewRecord:
     task.status = TaskStatus.REVISION_REQUESTED
     task.save(update_fields=["status"])
     return review
+
+
+# --- Provider-backed task helpers ------------------------------------------
+
+def get_task_proofreading_info(task: AnnotationTask) -> dict:
+    """Return launch info + a download descriptor for a task's proofreading.
+
+    Delegates to the configured proofreading provider. Callers (DRF views,
+    admin, React) use this instead of importing an adapter directly, so the
+    active tool can change in one place.
+    """
+    from .proofreading.registry import get_proofreading_provider
+
+    provider = get_proofreading_provider()
+    info = provider.get_launch_info(task).to_dict()
+    info["provider"] = provider.name
+    info["download"] = provider.prepare_download(task)
+    return info
+
+
+def get_task_download_descriptor(task: AnnotationTask) -> dict:
+    """Return the descriptor an annotator downloads to work on a task locally."""
+    from .proofreading.registry import get_proofreading_provider
+
+    return get_proofreading_provider().prepare_download(task)
+
+
+def get_visualization_state(volume_or_task) -> dict:
+    """Return the viewer URL + state for a volume or task."""
+    from .visualization.registry import get_visualization_provider
+
+    provider = get_visualization_provider()
+    state = provider.get_view_state(volume_or_task)
+    state["url"] = provider.get_view_url(volume_or_task)
+    return state
 
 
 # --- Workload --------------------------------------------------------------

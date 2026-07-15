@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from django.utils import timezone
 
-from core.choices import TaskStatus
+from core.choices import ANNOTATION_TYPE_TO_WORKFLOW, TaskStatus, WorkflowType
 
 from .models import Project
 
@@ -22,6 +22,7 @@ def create_project(
     description: str = "",
     annotation_target: str = "mitochondria",
     annotation_type: str | None = None,
+    workflow_type: str | None = None,
     deadline=None,
     status: str | None = None,
     dataset: str = "",
@@ -32,6 +33,8 @@ def create_project(
 
     ``reviewed`` marks the project as manager-reviewed on creation (used when a
     manager registers data directly); requester-registered data stays pending.
+    ``workflow_type`` defaults to the value derived from ``annotation_type``
+    (see :data:`core.choices.ANNOTATION_TYPE_TO_WORKFLOW`).
     """
     kwargs = {
         "title": title,
@@ -42,6 +45,7 @@ def create_project(
         "dataset": dataset or "",
         "metadata": metadata or {},
         "manager_reviewed": reviewed,
+        "workflow_type": resolve_workflow_type(workflow_type, annotation_type),
     }
     if reviewed:
         kwargs["reviewed_by"] = created_by
@@ -53,6 +57,23 @@ def create_project(
     if deadline is not None:
         kwargs["deadline"] = deadline
     return Project.objects.create(**kwargs)
+
+
+def resolve_workflow_type(
+    workflow_type: str | None, annotation_type: str | None = None
+) -> str:
+    """Resolve the workflow type, deriving it from ``annotation_type`` if unset.
+
+    Explicit ``workflow_type`` wins. Otherwise it is inferred from the (older,
+    more specific) ``annotation_type``; failing that it defaults to annotation.
+    """
+    if workflow_type:
+        return workflow_type
+    if annotation_type:
+        return ANNOTATION_TYPE_TO_WORKFLOW.get(
+            annotation_type, WorkflowType.ANNOTATION
+        )
+    return WorkflowType.ANNOTATION
 
 
 def mark_project_reviewed(project: Project, reviewer=None, reviewed: bool = True) -> Project:

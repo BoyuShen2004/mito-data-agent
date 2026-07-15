@@ -1,4 +1,5 @@
 import type { ProjectStatus, TaskStatus } from "./index";
+import type { Lifecycle, WorkflowType } from "../labels";
 
 export interface DatasetMetadata {
   organism?: string;
@@ -25,6 +26,8 @@ export interface Project {
   metadata: DatasetMetadata;
   annotation_target: string;
   annotation_type: string;
+  workflow_type: WorkflowType;
+  lifecycle: Lifecycle;
   status: ProjectStatus;
   deadline: string | null;
   created_by: number | null;

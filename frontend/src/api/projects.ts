@@ -12,7 +12,10 @@ export interface ProjectInput {
   deadline?: string | null;
 }
 
-export const listProjects = () => api.get<Project[]>("/projects/");
+export const listProjects = (lifecycle?: string) =>
+  api.get<Project[]>(
+    lifecycle ? `/projects/?lifecycle=${encodeURIComponent(lifecycle)}` : "/projects/",
+  );
 
 export const getProject = (id: number) => api.get<Project>(`/projects/${id}/`);
 

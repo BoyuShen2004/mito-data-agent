@@ -30,7 +30,29 @@ class ManagerAdminSite(AdminSite):
     def index(self, request, extra_context=None):
         extra_context = extra_context or {}
         extra_context["dashboard_metrics"] = self._dashboard_metrics()
+        extra_context["lifecycle_metrics"] = self._lifecycle_metrics()
         return super().index(request, extra_context)
+
+    @staticmethod
+    def _lifecycle_metrics():
+        """New / To Proofread / Done project counts for the dashboard."""
+        from core.lifecycle import Lifecycle, project_lifecycle_counts
+        from projects.models import Project
+
+        counts = project_lifecycle_counts(
+            Project.objects.all().only(
+                "id", "status", "manager_reviewed"
+            ).prefetch_related("tasks")
+        )
+        # Each bucket links to the Project changelist filtered by lifecycle.
+        return [
+            {
+                "label": Lifecycle(bucket).label,
+                "value": counts.get(bucket, 0),
+                "url": changelist_url(Project, lifecycle=bucket),
+            }
+            for bucket in Lifecycle.values
+        ]
 
     @staticmethod
     def _dashboard_metrics():

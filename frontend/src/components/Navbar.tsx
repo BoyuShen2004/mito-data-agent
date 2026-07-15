@@ -1,5 +1,6 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { roleLabel } from "../labels";
 
 export default function Navbar() {
   const { user, isManager, isRequester, logout } = useAuth();
@@ -41,7 +42,7 @@ export default function Navbar() {
       )}
       <span className="spacer" />
       <span className="muted">
-        {user?.username} ({user?.role})
+        {user?.username} ({roleLabel(user?.role)})
       </span>
       <button className="secondary" onClick={onLogout}>
         Log out

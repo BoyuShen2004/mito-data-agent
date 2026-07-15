@@ -1,10 +1,19 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { listProjects } from "../api/projects";
 import { useAsync } from "../hooks/useAsync";
 import StatusBadge from "../components/StatusBadge";
+import LifecycleTabs from "../features/lifecycle/LifecycleTabs";
+import { getLifecycleCounts } from "../features/lifecycle/api";
+import { lifecycleLabel, type Lifecycle } from "../labels";
 
 export default function RequesterDashboard() {
-  const projects = useAsync(listProjects, []);
+  const [lifecycle, setLifecycle] = useState<Lifecycle | "all">("all");
+  const projects = useAsync(
+    () => listProjects(lifecycle === "all" ? undefined : lifecycle),
+    [lifecycle],
+  );
+  const counts = useAsync(getLifecycleCounts, []);
   const rows = projects.data ?? [];
 
   return (
@@ -15,6 +24,12 @@ export default function RequesterDashboard() {
           <button>+ Register data</button>
         </Link>
       </div>
+
+      <LifecycleTabs
+        active={lifecycle}
+        counts={counts.data ?? undefined}
+        onChange={setLifecycle}
+      />
 
       <div className="grid">
         <div className="card">
@@ -48,6 +63,8 @@ export default function RequesterDashboard() {
               <thead>
                 <tr>
                   <th>Dataset</th>
+                  <th>Lifecycle</th>
+                  <th>Workflow</th>
                   <th>Status</th>
                   <th>Manager review</th>
                   <th>Volumes</th>
@@ -63,6 +80,8 @@ export default function RequesterDashboard() {
                         {p.dataset || p.title}
                       </Link>
                     </td>
+                    <td>{lifecycleLabel(p.lifecycle)}</td>
+                    <td>{p.workflow_type}</td>
                     <td>
                       <StatusBadge value={p.status} />
                     </td>

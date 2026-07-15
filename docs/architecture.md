@@ -84,6 +84,61 @@ User ─1:1─ AnnotatorProfile (is_active_annotator, max_active_tasks, quality_
 5. The service creates the `AnnotationSubmission`, runs `run_basic_qc()`, and
    flips the task status — the same service the Manager Admin would use.
 
+## Lifecycle, terminology, and workflow types
+
+- **New / To Proofread / Done** is one centralised mapping in
+  `core/lifecycle.py` over the *existing* statuses (project review gate + task
+  rollup; volume status). Everything — the project serializer's `lifecycle`
+  field, the `?lifecycle=` list filter and `/api/projects/lifecycle-counts/`,
+  the Admin `LifecycleFilter` and dashboard, and the React tabs — reads from
+  this module. There are **no new lifecycle tables**.
+- **Terminology.** The internal role value stays `requester`; the UI shows
+  **Institution**. The internal→display mapping is centralised in
+  `core/labels.py` (backend) and `frontend/src/labels.ts` (frontend). No
+  database values or migrations were renamed.
+- **Workflow type** (`annotation` / `proofreading` / `segmentation`) is a field
+  on `Project` (`WorkflowType`), defaulted from the older `annotation_type`.
+  The three workflows share one registration → volume → task → submission →
+  review → result pipeline; they differ only by configuration and service-layer
+  branching, not duplicated code.
+
+## Modular providers (replaceable integrations)
+
+Replaceable integrations sit behind small interfaces — an ABC in
+`interfaces.py`, a settings-driven `registry.py`, and `adapters/`. **Domain
+services call the registry; admin/API/React never import an adapter.** Each is
+chosen by a `settings.MITO_*` value.
+
+| Provider | Package | Default | Setting |
+| --- | --- | --- | --- |
+| Quality control | `annotation/quality_control/` | `basic` (original file checks) | `MITO_QC_PROVIDER` |
+| Proofreading | `annotation/proofreading/` | `placeholder` (download + upload) | `MITO_PROOFREADING_PROVIDER` |
+| Visualization | `annotation/visualization/` | `placeholder` | `MITO_VISUALIZATION_PROVIDER` |
+| Publishing | `annotation/publishing/` | `placeholder` | `MITO_PUBLISHING_PROVIDER` |
+| Processing backend | `processing/adapters/` | `local` (mock) | `MITO_PROCESSING_BACKEND` |
+
+The proofreading provider distinguishes **view** from **edit**: a read-only
+viewer (Neuroglancer) reports `editable=False`, so the UI never implies edits
+are saved. `run_basic_qc` is unchanged in behaviour — it now delegates to the QC
+provider and persists the result.
+
+## ProcessingJob and the dispatcher
+
+Heavy/async work (ingest, predict, generate tasks, convert, mesh, publish…) is a
+`processing.ProcessingJob` row, never run inside an HTTP request. The API/Admin
+only **create/retry/cancel** jobs; the dispatcher executes them:
+
+```
+create_processing_job()  →  queued
+run_processing_dispatcher →  claim (row-locked) → backend.submit() → poll → terminal → callback
+```
+
+Backends: `LocalProcessingBackend` (dev/tests, simulates success + writes a
+marker output) and `SlurmProcessingBackend` (sbatch/squeue/sacct/scancel; all
+cluster values from `MITO_SLURM_*` env). No Celery/Redis. On SQLite the row lock
+is a no-op (single dispatcher assumed); on PostgreSQL it uses
+`select_for_update(skip_locked=True)`.
+
 ## Storage & configuration
 
 - Files live under `MITO_DATA_ROOT` (see `.env`); the DB stores only relative

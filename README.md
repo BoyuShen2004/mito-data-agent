@@ -97,9 +97,31 @@ python backend/manage.py check             # system checks
 npm run build --prefix frontend            # frontend typecheck + build
 ```
 
+## Workflow types & lifecycle
+
+Each dataset (`Project`) has a **workflow type** — `annotation`, `proofreading`,
+or `segmentation` — sharing one registration → volume → task → submission →
+review pipeline. Records roll up into three lifecycle views, **New / To
+Proofread / Done**, defined once in `backend/core/lifecycle.py` and surfaced in
+the API (`?lifecycle=`, `/api/projects/lifecycle-counts/`), the Manager Admin
+(filter + dashboard), and the Institution dashboard (tabs).
+
+The internal `requester` role is shown as **Institution** in the UI
+(display-label mapping in `backend/core/labels.py` / `frontend/src/labels.ts`);
+no database values were renamed.
+
+Replaceable integrations live behind provider folders — proofreading, quality
+control, visualization, publishing (`backend/annotation/*/`) and processing/HPC
+(`backend/processing/`, with `local` and `slurm` backends and a
+`run_processing_dispatcher` command). See
+[docs/codemap.md](docs/codemap.md#one-replaceable-feature--one-folder).
+
 ## Out of scope (not in the MVP)
 
-In-browser image annotation, nnU-Net / PyTorch-Connectomics, Slurm, advanced QC,
-Hugging Face / MitoVerse publishing, and payments/wages/billing (annotation work
+Provider **boundaries** exist, but these integrations are intentionally
+placeholders/stubs: in-browser voxel editing, real SLURM cluster runs, model
+inference (nnU-Net / PyTorch-Connectomics), connected-component scientific QA,
+Neuroglancer precomputed conversion, mesh generation, and Hugging Face /
+MitoVerse publishing. Also out of scope: payments/wages/billing (annotation work
 is unpaid). Single-server production deployment is future work — development
 keeps Vite and Django as separate processes.

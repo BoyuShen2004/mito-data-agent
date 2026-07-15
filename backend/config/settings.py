@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     "projects",
     "volumes",
     "annotation",
+    "processing",
 ]
 
 MIDDLEWARE = [
@@ -174,6 +175,36 @@ MITO_ALLOWED_LABEL_EXTENSIONS = [
 
 # Default frame step used when splitting a volume into tasks.
 MITO_DEFAULT_Z_STEP = int(os.getenv("MITO_DEFAULT_Z_STEP", "16"))
+
+
+# --- Modular provider selection --------------------------------------------
+# Each replaceable integration is chosen by name here; the domain services call
+# the provider registry, never a low-level adapter directly. See docs/codemap.md
+# for the folder that owns each provider.
+MITO_QC_PROVIDER = os.getenv("MITO_QC_PROVIDER", "basic")
+MITO_PROOFREADING_PROVIDER = os.getenv("MITO_PROOFREADING_PROVIDER", "placeholder")
+MITO_VISUALIZATION_PROVIDER = os.getenv("MITO_VISUALIZATION_PROVIDER", "placeholder")
+MITO_PUBLISHING_PROVIDER = os.getenv("MITO_PUBLISHING_PROVIDER", "placeholder")
+
+# Processing/HPC backend for ProcessingJob execution ("local" or "slurm").
+MITO_PROCESSING_BACKEND = os.getenv("MITO_PROCESSING_BACKEND", "local")
+
+# Shared storage root for processing inputs/outputs/logs. Defaults to the data
+# root so local development works without extra configuration.
+MITO_SHARED_STORAGE_ROOT = os.getenv("MITO_SHARED_STORAGE_ROOT", str(MITO_DATA_ROOT))
+
+# Optional external tool URLs used by the placeholder proofreading/visualization
+# providers. Left blank means "not configured".
+MITO_PROOFREADING_TOOL_URL = os.getenv("MITO_PROOFREADING_TOOL_URL", "")
+MITO_NEUROGLANCER_BASE_URL = os.getenv("MITO_NEUROGLANCER_BASE_URL", "")
+
+# --- SLURM adapter configuration (all lab-specific values come from env) ----
+MITO_SLURM_PARTITION = os.getenv("MITO_SLURM_PARTITION", "")
+MITO_SLURM_ACCOUNT = os.getenv("MITO_SLURM_ACCOUNT", "")
+MITO_SLURM_SBATCH = os.getenv("MITO_SLURM_SBATCH", "sbatch")
+MITO_SLURM_SQUEUE = os.getenv("MITO_SLURM_SQUEUE", "squeue")
+MITO_SLURM_SACCT = os.getenv("MITO_SLURM_SACCT", "sacct")
+MITO_SLURM_SCANCEL = os.getenv("MITO_SLURM_SCANCEL", "scancel")
 
 
 # --- Django REST Framework -------------------------------------------------

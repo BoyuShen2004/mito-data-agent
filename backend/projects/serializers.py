@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from core.lifecycle import classify_project
+
 from .models import Project
 
 
@@ -15,6 +17,12 @@ class ProjectSerializer(serializers.ModelSerializer):
     )
     volume_count = serializers.IntegerField(source="volumes.count", read_only=True)
     task_count = serializers.IntegerField(source="tasks.count", read_only=True)
+    # The New / To Proofread / Done bucket, computed from the review gate and
+    # task rollup (see core.lifecycle).
+    lifecycle = serializers.SerializerMethodField()
+
+    def get_lifecycle(self, obj) -> str:
+        return classify_project(obj)
 
     class Meta:
         model = Project
@@ -28,6 +36,8 @@ class ProjectSerializer(serializers.ModelSerializer):
             "metadata",
             "annotation_target",
             "annotation_type",
+            "workflow_type",
+            "lifecycle",
             "status",
             "deadline",
             "created_by",

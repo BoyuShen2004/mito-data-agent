@@ -7,10 +7,32 @@ from annotation.models import AnnotationTask
 from annotation.services import auto_assign_project
 from core.admin_common import ManagerAdminAccessMixin, count_link
 from core.choices import TaskStatus
+from core.lifecycle import Lifecycle, classify_project
 from volumes.models import Volume
 
 from .models import Project
 from .services import calculate_project_progress, mark_project_reviewed
+
+
+class LifecycleFilter(admin.SimpleListFilter):
+    """Filter projects by their New / To Proofread / Done bucket.
+
+    Lifecycle is a rollup of the review gate and task statuses (see
+    ``core.lifecycle``), so it is filtered in Python rather than via SQL.
+    """
+
+    title = "lifecycle"
+    parameter_name = "lifecycle"
+
+    def lookups(self, request, model_admin):
+        return [(lc.value, lc.label) for lc in Lifecycle]
+
+    def queryset(self, request, queryset):
+        value = self.value()
+        if value not in Lifecycle.values:
+            return queryset
+        ids = [p.pk for p in queryset if classify_project(p) == value]
+        return queryset.filter(pk__in=ids)
 
 
 @admin.register(Project)
@@ -23,8 +45,10 @@ class ProjectAdmin(ManagerAdminAccessMixin, admin.ModelAdmin):
         "title",
         "institution",
         "created_by",
+        "workflow_type",
         "annotation_type",
         "status",
+        "lifecycle_badge",
         "approval_state",
         "deadline",
         "volume_count",
@@ -34,6 +58,8 @@ class ProjectAdmin(ManagerAdminAccessMixin, admin.ModelAdmin):
         "created_at",
     )
     list_filter = (
+        LifecycleFilter,
+        "workflow_type",
         "manager_reviewed",
         "status",
         "annotation_type",
@@ -73,6 +99,7 @@ class ProjectAdmin(ManagerAdminAccessMixin, admin.ModelAdmin):
                     "title",
                     "dataset",
                     "institution",
+                    "workflow_type",
                     "annotation_type",
                     "annotation_target",
                     "status",
@@ -111,6 +138,10 @@ class ProjectAdmin(ManagerAdminAccessMixin, admin.ModelAdmin):
         )
 
     # --- computed columns ---------------------------------------------------
+    @admin.display(description="Lifecycle")
+    def lifecycle_badge(self, obj):
+        return Lifecycle(classify_project(obj)).label
+
     @admin.display(description="Approved", boolean=True, ordering="manager_reviewed")
     def approval_state(self, obj):
         return obj.manager_reviewed

@@ -24,7 +24,10 @@ from annotation.api import (
     SubmissionListView,
     SubmitTaskView,
     TaskDetailView,
+    TaskProofreadingView,
+    TaskVisualizationView,
 )
+from processing.api import ProcessingJobViewSet
 from projects.api import ProjectViewSet
 from volumes.api import (
     HpcScanView,
@@ -37,6 +40,7 @@ from volumes.api import (
 # ProjectViewSet handles /api/projects/ CRUD plus a progress summary action.
 router = DefaultRouter()
 router.register("projects", ProjectViewSet, basename="project")
+router.register("processing-jobs", ProcessingJobViewSet, basename="processing-job")
 
 urlpatterns = [
     # Friendly landing page (the real UI is the React app on :5173).
@@ -75,6 +79,16 @@ urlpatterns = [
         name="api-assign-tasks",
     ),
     path("api/tasks/<int:pk>/", TaskDetailView.as_view(), name="api-task-detail"),
+    path(
+        "api/tasks/<int:pk>/proofreading/",
+        TaskProofreadingView.as_view(),
+        name="api-task-proofreading",
+    ),
+    path(
+        "api/tasks/<int:pk>/visualization/",
+        TaskVisualizationView.as_view(),
+        name="api-task-visualization",
+    ),
     path(
         "api/tasks/<int:pk>/assign/",
         AssignTaskView.as_view(),

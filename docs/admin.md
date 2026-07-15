@@ -60,16 +60,25 @@ built-in user/group/token management.
 
 ## What managers can do in the admin
 
-**Dashboard** (`/admin/`) — operational metrics, each linking to the matching
-filtered changelist: projects awaiting approval, approved projects, unassigned
-tasks, assigned/in-progress tasks, submissions awaiting review,
-revision-requested tasks, overdue tasks, active annotators, annotators at
-capacity.
+**Dashboard** (`/admin/`) — a **Data lifecycle** row (New / To Proofread / Done
+project counts, each linking to the lifecycle-filtered Project changelist) plus
+the **Workflow** metrics, each linking to the matching filtered changelist:
+projects awaiting approval, approved projects, unassigned tasks,
+assigned/in-progress tasks, submissions awaiting review, revision-requested
+tasks, overdue tasks, active annotators, annotators at capacity.
 
-**Projects** — list with approval state, deadlines, volume/task/approved counts
-and progress%. Actions: **Approve selected projects**, **Auto-assign tasks for
-selected approved projects** (one whole-volume task per volume, balanced across
-active annotators), **Show progress**. Links to a project's volumes and tasks.
+**Projects** — list with **lifecycle** (New/To Proofread/Done), **workflow
+type**, approval state, deadlines, volume/task/approved counts and progress%.
+Filters include a **lifecycle** filter and **workflow type**. Actions: **Approve
+selected projects**, **Auto-assign tasks for selected approved projects** (one
+whole-volume task per volume, balanced across active annotators), **Show
+progress**. Links to a project's volumes and tasks.
+
+**Processing jobs** — monitor HPC/local jobs: type, backend, status, linked
+project/volume/task, external job id, retry count, and read-only config /
+input-paths / output-paths. Actions: **Retry** (terminal jobs), **Cancel**, and
+**Run selected queued jobs now** (dev). Jobs are created by the service layer,
+not by hand; all actions call `processing.services`.
 
 **Volumes** — file/label paths, label type, format, derived shape (read-only),
 and task counts. Actions: **Split into frame-based tasks** (default z-step) and

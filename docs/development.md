@@ -95,6 +95,41 @@ npm run build --prefix frontend            # frontend typecheck (tsc) + build
 
 See [codemap.md](codemap.md#where-the-tests-live) for which tests cover what.
 
+## Providers & processing jobs
+
+Replaceable integrations are chosen by env/settings (see
+[codemap.md](codemap.md#one-replaceable-feature--one-folder) for the folders):
+
+```bash
+MITO_QC_PROVIDER=basic                 # annotation/quality_control/
+MITO_PROOFREADING_PROVIDER=placeholder # annotation/proofreading/
+MITO_VISUALIZATION_PROVIDER=placeholder# annotation/visualization/
+MITO_PUBLISHING_PROVIDER=placeholder   # annotation/publishing/
+MITO_PROCESSING_BACKEND=local          # processing/adapters/{local,slurm}.py
+```
+
+Heavy work runs as `ProcessingJob` rows, never inside a request. Run the
+dispatcher to execute queued jobs:
+
+```bash
+cd backend
+python manage.py run_processing_dispatcher --once     # single pass (local backend by default)
+python manage.py run_processing_dispatcher            # loop
+```
+
+**SLURM** (`MITO_PROCESSING_BACKEND=slurm`) reads all cluster-specific values
+from the environment — nothing is hard-coded:
+
+```bash
+MITO_SHARED_STORAGE_ROOT=/shared/mito
+MITO_SLURM_PARTITION=gpu
+MITO_SLURM_ACCOUNT=weilab
+MITO_SLURM_SBATCH=sbatch   # + MITO_SLURM_SQUEUE / SACCT / SCANCEL
+```
+
+No real cluster is needed for local development or tests (the `local` backend
+simulates jobs). The per-job command/script goes in `job.config['command']`.
+
 ## Remote / HPC access
 
 The servers bind to localhost by default. Forward the port over SSH:

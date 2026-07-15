@@ -52,13 +52,14 @@ mitochondria counts are derived from the files, never entered here.
 
 | Method | Path | Notes |
 | ------ | ---- | ----- |
-| GET | `/projects/` | list (manager: all; requester: own) |
-| POST | `/projects/` | `{title, dataset?, description?, metadata?, annotation_type?, deadline?}` |
-| GET | `/projects/<id>/` | retrieve (owner requester or manager) |
-| PATCH | `/projects/<id>/` | partial update, incl. `metadata` (owner requester or manager) |
+| GET | `/projects/` | list (manager: all; requester/Institution: own). `?lifecycle=new\|to_proofread\|done` filters by lifecycle bucket |
+| POST | `/projects/` | `{title, dataset?, description?, metadata?, annotation_type?, workflow_type?, deadline?}` (`workflow_type` ∈ annotation/proofreading/segmentation; defaults from `annotation_type`) |
+| GET | `/projects/lifecycle-counts/` | `{new, to_proofread, done}` counts over the caller's visible projects |
+| GET | `/projects/<id>/` | retrieve (owner Institution or manager). Response includes `workflow_type` and computed `lifecycle` |
+| PATCH | `/projects/<id>/` | partial update, incl. `metadata` (owner Institution or manager) |
 | DELETE | `/projects/<id>/` | delete |
 | GET | `/projects/<id>/summary/` | progress (+ annotator workload for managers) |
-| POST | `/projects/<id>/review/` | manager only: `{reviewed?}` (default `true`) — approve requester-registered data so it can be split/assigned |
+| POST | `/projects/<id>/review/` | manager only: `{reviewed?}` (default `true`) — approve Institution-registered data so it can be split/assigned |
 
 ## Volumes (manager: any; requester: own project)
 
@@ -81,6 +82,20 @@ mitochondria counts are derived from the files, never entered here.
 | PATCH | `/tasks/<id>/` | auth | manager: any field; annotator: start own task |
 | GET | `/my-tasks/` | annotator | active/assigned tasks |
 | GET | `/my-completed-tasks/` | annotator | submitted/approved/rejected |
+| GET | `/tasks/<id>/proofreading/` | manager or assignee | launch info from the proofreading provider: `{mode, url, editable, download_available, message, provider, download{...}}`. `mode` ∈ edit/view/download/unavailable |
+| GET | `/tasks/<id>/visualization/` | manager or assignee | `{available, url, provider, image_path, label_path, region?}` |
+
+## Processing jobs (manager: all; Institution: own projects)
+
+| Method | Path | Access | Notes |
+| ------ | ---- | ------ | ----- |
+| GET | `/processing-jobs/` | auth | list; manager sees all, Institution sees jobs on own projects. `?status=` / `?job_type=` filters |
+| GET | `/processing-jobs/<id>/` | auth | retrieve |
+| POST | `/processing-jobs/<id>/retry/` | manager | requeue a terminal (failed/cancelled/succeeded) job |
+| POST | `/processing-jobs/<id>/cancel/` | manager | cancel a job (best effort via its backend) |
+
+Jobs are **created by the service layer** (not a public POST) and executed by the
+`run_processing_dispatcher` management command.
 
 ## Submissions
 

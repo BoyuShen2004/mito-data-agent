@@ -14,6 +14,17 @@ export default defineConfig({
   server: {
     host,
     port,
+    // Vite checks the incoming request's Host header against an allowlist
+    // (DNS-rebinding protection) and otherwise silently rejects it — the
+    // request never even reaches this app. That allowlist only knows
+    // localhost/127.0.0.1/the configured `host` by default, but remote-dev
+    // proxies (VS Code/Cursor Remote-SSH port forwarding, SSH tunnels
+    // through a jump host, opening via a machine's real network IP) can
+    // present a completely different Host header, so the request gets
+    // blocked before Vite even serves the page — this can look identical to
+    // "nothing is listening" from the browser. Disabled here since this is
+    // a local/HPC dev server, never a public deployment.
+    allowedHosts: true,
     // The dev server proxies API + media requests to the Django backend so the
     // SPA can use same-origin relative URLs.
     proxy: {

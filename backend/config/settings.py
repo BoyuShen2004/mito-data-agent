@@ -179,12 +179,58 @@ MITO_DEFAULT_Z_STEP = int(os.getenv("MITO_DEFAULT_Z_STEP", "16"))
 
 # --- Modular provider selection --------------------------------------------
 # Each replaceable integration is chosen by name here; the domain services call
-# the provider registry, never a low-level adapter directly. See docs/codemap.md
+# the provider registry, never a low-level adapter directly. See progress/codemap.md
 # for the folder that owns each provider.
 MITO_QC_PROVIDER = os.getenv("MITO_QC_PROVIDER", "basic")
-MITO_PROOFREADING_PROVIDER = os.getenv("MITO_PROOFREADING_PROVIDER", "placeholder")
-MITO_VISUALIZATION_PROVIDER = os.getenv("MITO_VISUALIZATION_PROVIDER", "placeholder")
+MITO_PROOFREADING_PROVIDER = os.getenv("MITO_PROOFREADING_PROVIDER", "inapp")
+MITO_VISUALIZATION_PROVIDER = os.getenv("MITO_VISUALIZATION_PROVIDER", "inapp")
 MITO_PUBLISHING_PROVIDER = os.getenv("MITO_PUBLISHING_PROVIDER", "placeholder")
+
+# SAM2 fork-aware tracking. "local" is a dependency-free CPU stand-in (dev/CI);
+# "sam2" runs the real GPU model on an HPC compute node (dispatched via the
+# processing backend). The sam2 paths are only read on GPU nodes.
+#
+# Defaults point at vendor/sam2/ — a full copy of facebookresearch/sam2 plus
+# downloaded checkpoints living under this repo's own root (see
+# vendor/README.md) — so MITO_TRACKING_PROVIDER=sam2 works with zero .env
+# configuration on any machine that has this repo checked out (still needs
+# torch + a GPU to actually run; see requirements-sam2.txt and
+# progress/development.md). Override via .env if you keep the checkout elsewhere.
+MITO_TRACKING_PROVIDER = os.getenv("MITO_TRACKING_PROVIDER", "local")
+_default_sam2_root = BASE_DIR.parent / "vendor" / "sam2"
+MITO_SAM2_ROOT = os.getenv("MITO_SAM2_ROOT", str(_default_sam2_root))
+MITO_SAM2_CHECKPOINT = os.getenv(
+    "MITO_SAM2_CHECKPOINT", str(_default_sam2_root / "checkpoints" / "sam2.1_hiera_tiny.pt")
+)
+MITO_SAM2_CONFIG = os.getenv("MITO_SAM2_CONFIG", "configs/sam2.1/sam2.1_hiera_t.yaml")
+
+# Cellable-ported interactive AI-mask tools (Point Mask / Box Mask / Boundary
+# — see backend/annotation/cellable_port/). Unlike vendor/sam2/ above, this
+# does NOT vendor (copy) the ~141MB of EfficientSAM ONNX weight files into
+# this repo — they're plain data files, not a code dependency, and Cellable
+# is a sibling app on the same filesystem (not an external upstream release),
+# so the default just points at its already-downloaded copy directly.
+# Override MITO_CELLABLE_MODELS_ROOT in .env if that checkout moves or you
+# copy the weights somewhere this app owns. onnxruntime/scikit-image/scipy
+# are optional deps (requirements-cellable-ai.txt) — see
+# cellable_port/ai/registry.py for the graceful "unavailable" degradation
+# when they (or the model files) aren't present.
+#
+# "vits" ("EfficientSam (accuracy)") matches Cellable's own default combo
+# (efficient_sam_vits_{encoder,decoder}.onnx) — same model, same weight
+# tier, so a click on the same slice should produce the same mask (modulo
+# the image-preprocessing alignment in cellable_port/ai/normalize.py). A
+# prior round defaulted to "vitt" (tiny/fast) as a CPU-friendliness
+# shortcut; per progress/history/21-cellable-parity-followups.md that is
+# NOT what "Cellable parity" means to this app's user — mask *identity*
+# with local Cellable matters more than raw speed. Set
+# MITO_EFFICIENT_SAM_VARIANT=vitt yourself if you explicitly want the
+# faster/smaller model instead.
+MITO_CELLABLE_MODELS_ROOT = os.getenv(
+    "MITO_CELLABLE_MODELS_ROOT",
+    "/projects/weilab/shenb/cellable/labelme/models",
+)
+MITO_EFFICIENT_SAM_VARIANT = os.getenv("MITO_EFFICIENT_SAM_VARIANT", "vits")
 
 # Processing/HPC backend for ProcessingJob execution ("local" or "slurm").
 MITO_PROCESSING_BACKEND = os.getenv("MITO_PROCESSING_BACKEND", "local")

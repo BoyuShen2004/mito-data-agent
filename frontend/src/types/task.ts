@@ -7,7 +7,14 @@ export interface AnnotationTask {
   project: number;
   project_title: string;
   dataset: string;
-  project_metadata: DatasetMetadata;
+  // The shared biomedical metadata (same source managers/requesters see).
+  dataset_metadata: DatasetMetadata;
+  voxel_size_z: number | null;
+  voxel_size_y: number | null;
+  voxel_size_x: number | null;
+  shape_z: number | null;
+  shape_y: number | null;
+  shape_x: number | null;
   volume: number;
   volume_name: string;
   source_volume: string;
@@ -49,4 +56,42 @@ export interface Annotator {
   username: string;
   is_active_annotator: boolean;
   max_active_tasks: number;
+}
+
+// A row of the draft assignment plan: a task plus the annotator the auto-planner
+// proposes for it, which the manager can override before saving.
+export interface PlanEntryTask extends AnnotationTask {
+  proposed_annotator_id: number | null;
+}
+
+export interface AssignmentPlanPreview {
+  created_tasks: number;
+  skipped_volumes: number;
+  entries: PlanEntryTask[];
+}
+
+// Response of GET-ing the plan editor's rows: one per volume (a task is
+// created for any volume that doesn't have one yet), with no proposed
+// annotator — that's only computed when "Auto-fill balanced plan" runs.
+export interface AssignmentPlanRows {
+  created_tasks: number;
+  skipped_volumes: number;
+  entries: AnnotationTask[];
+}
+
+// What the client sends back when saving. Only task_id is required; other keys
+// are included when the manager edited them.
+export interface PlanEntryInput {
+  task_id: number;
+  annotator_id?: number | null;
+  priority?: number;
+  difficulty?: number;
+  instructions?: string;
+  deadline?: string | null;
+}
+
+export interface ApplyPlanResult {
+  updated: number;
+  assigned: number;
+  remaining_unassigned: number;
 }

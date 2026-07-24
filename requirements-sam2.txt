@@ -1,0 +1,28 @@
+# Optional, GPU-node-only dependencies for MITO_TRACKING_PROVIDER=sam2 (the
+# real SAM2 fork-aware tracking model). NOT part of requirements.txt on
+# purpose — local dev, CI, and the default MITO_TRACKING_PROVIDER=local all
+# run with zero GPU/torch dependency; only install this file into the
+# mito-data-agent conda env on a machine that actually has an NVIDIA GPU and
+# will run tracking for real (see docs/development.md).
+#
+# Install torch/torchvision matching your CUDA version FIRST, following
+# https://pytorch.org — this file pins sam2's minimum versions but can't pin
+# a CUDA build for you, since that's machine-specific:
+#   pip install torch>=2.5.1 torchvision>=0.20.1 --index-url <your CUDA wheel index>
+# then:
+#   pip install -r requirements-sam2.txt
+#
+# The vendored SAM 2 package itself (vendor/sam2/ — see vendor/README.md)
+# is NOT installed via this file; annotation/tracking/adapters/sam2_bridge.py
+# adds it to sys.path directly (MITO_SAM2_ROOT), so nothing here needs to
+# `pip install -e vendor/sam2`. Optional: build the CUDA post-processing
+# extension in place (removes small holes/sprinkles in output masks; sam2
+# works without it, see vendor/sam2/INSTALL.md):
+#   cd vendor/sam2 && python setup.py build_ext --inplace
+
+torch>=2.5.1
+torchvision>=0.20.1
+hydra-core>=1.3.2
+iopath>=0.1.10
+tqdm>=4.66.1
+# numpy and Pillow are already in requirements.txt (both apps share them).

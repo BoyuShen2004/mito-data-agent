@@ -1,13 +1,11 @@
-"""Role helpers and view decorators.
+"""Role predicates.
 
 Role is read from the user's :class:`UserProfile`. Superusers are always
 treated as managers so the admin-created superuser can drive the workflow.
+
+API-level enforcement uses the DRF permission classes in
+``core.permissions``; these helpers are the shared predicates behind them.
 """
-
-from functools import wraps
-
-from django.contrib.auth.decorators import login_required
-from django.core.exceptions import PermissionDenied
 
 from core.choices import UserRole
 
@@ -39,36 +37,3 @@ def is_requester(user) -> bool:
 def can_register_data(user) -> bool:
     """Requesters and managers may register datasets."""
     return is_manager(user) or is_requester(user)
-
-
-def manager_required(view_func):
-    @wraps(view_func)
-    @login_required
-    def _wrapped(request, *args, **kwargs):
-        if not is_manager(request.user):
-            raise PermissionDenied("Manager access required.")
-        return view_func(request, *args, **kwargs)
-
-    return _wrapped
-
-
-def annotator_required(view_func):
-    @wraps(view_func)
-    @login_required
-    def _wrapped(request, *args, **kwargs):
-        if not is_annotator(request.user):
-            raise PermissionDenied("Annotator access required.")
-        return view_func(request, *args, **kwargs)
-
-    return _wrapped
-
-
-def requester_required(view_func):
-    @wraps(view_func)
-    @login_required
-    def _wrapped(request, *args, **kwargs):
-        if not is_requester(request.user):
-            raise PermissionDenied("Requester access required.")
-        return view_func(request, *args, **kwargs)
-
-    return _wrapped

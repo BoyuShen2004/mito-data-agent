@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { homePathForRole } from "../routes/AppRoutes";
+import BackButton from "../components/BackButton";
 
 type RegRole = "annotator" | "requester";
 
@@ -57,6 +58,7 @@ export default function RegisterPage() {
       <main className="login-form-panel">
         <div className="login-card">
           <div className="login-mobile-brand">🧬 Mito Data Agent</div>
+          <BackButton fallback="/login" />
           <h2>Sign up</h2>
           <p className="subtitle">Choose the type of account to create</p>
 

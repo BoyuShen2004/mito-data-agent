@@ -19,8 +19,11 @@ export default function ManagerDashboard() {
       <div className="row spread">
         <h1>Manager Dashboard</h1>
         <div className="row">
+          <Link to="/projects/new">
+            <button>+ New project</button>
+          </Link>
           <Link to="/register-data">
-            <button>+ Register data</button>
+            <button className="secondary">Register data</button>
           </Link>
           <Link to="/projects">
             <button className="secondary">All projects</button>

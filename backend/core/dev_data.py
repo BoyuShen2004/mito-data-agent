@@ -14,6 +14,10 @@ in ``core/management/commands/``.
 
 from __future__ import annotations
 
+import shutil
+from pathlib import Path
+
+from django.conf import settings
 from django.contrib.auth import get_user_model
 
 from accounts.models import AnnotatorProfile, Institution, UserProfile
@@ -76,24 +80,50 @@ def seed_standard_data(log=print) -> dict:
     }
 
 
+def _clear_data_root() -> int:
+    """Delete everything *inside* ``MITO_DATA_ROOT`` (not the directory
+    itself, so its permissions/ownership survive a wipe). Returns how many
+    top-level entries were removed.
+
+    Safe to do unconditionally: nothing this app doesn't own ever lives
+    under this root — registered-by-reference volumes only ever store an
+    absolute (or root-relative-but-external) path *elsewhere*; everything
+    actually written inside the root (`volumes/`, `submissions/`, and
+    per-project/dataset working label copies) is content this app generated
+    and can regenerate. There is no dev/prod distinction to worry about
+    either — the caller (`clear_dev_data`) is only ever reachable with
+    ``DEBUG`` on (`DevResetView`, `clear_dev_data`/`reset_dev` management
+    commands).
+    """
+    root = Path(settings.MITO_DATA_ROOT)
+    if not root.is_dir():
+        return 0
+    removed = 0
+    for entry in root.iterdir():
+        if entry.is_dir() and not entry.is_symlink():
+            shutil.rmtree(entry)
+        else:
+            entry.unlink()
+        removed += 1
+    return removed
+
+
 def clear_dev_data(*, keep_users: bool = False, log=print) -> dict:
     """Delete development data. Superusers are always preserved.
 
-    Removes projects, volumes, tasks, submissions, reviews, and institutions
-    (plus the files the app itself stored for them). Non-superuser accounts are
+    Removes projects, volumes, tasks, submissions, reviews, and institutions,
+    **and everything the app itself ever wrote under ``MITO_DATA_ROOT``** —
+    uploaded image/label/submission files (Django `FileField`s) *and* the
+    in-app editor's working label copies (`annotation.label_paths`, written
+    directly by path, not through a `FileField`, so they need this — a
+    per-`FileField` `.delete()` loop alone would miss them entirely; that was
+    a real bug, see `progress/history/17-fix-dev-reset-orphaned-files.md`).
+    Registered-*by-reference* volumes only store a path string pointing
+    outside `MITO_DATA_ROOT` (someone else's HPC data) — those are never
+    touched, only the DB row referencing them. Non-superuser accounts are
     removed too unless ``keep_users`` is set. Returns a dict of deleted counts.
     """
     log("Clearing development data…")
-
-    # Delete files the app stored before the rows that reference them disappear.
-    # (Registered volumes only reference external HPC paths, which we never touch.)
-    for sub in AnnotationSubmission.objects.all():
-        if sub.label_file:
-            sub.label_file.delete(save=False)
-    for vol in Volume.objects.all():
-        for field in (vol.image_file, vol.label_file):
-            if field:
-                field.delete(save=False)
 
     counts = {
         "reviews": ReviewRecord.objects.all().delete()[0],
@@ -103,6 +133,24 @@ def clear_dev_data(*, keep_users: bool = False, log=print) -> dict:
         "projects": Project.objects.all().delete()[0],
         "institutions": Institution.objects.all().delete()[0],
     }
+
+    files_removed = _clear_data_root()
+    log(f"  cleared {files_removed} item(s) under MITO_DATA_ROOT")
+
+    # The Django dev server is a long-running process — deleting working
+    # label files out from under it without also dropping slice_io's caches
+    # leaves a stale *writable* memmap handle open (keyed only by path, not
+    # mtime/inode — unlike the read-side volume cache). A later request for
+    # the same path (e.g. a volume re-registered after reset landing on the
+    # same id, which SQLite rowid reuse makes possible — see
+    # `annotation/test_tracking.py`'s setUp comment on the same issue) would
+    # then silently read/write the orphaned old file instead of the new one.
+    # `track_task_fork`/`_save_label_volume` already clear these caches after
+    # a full label rewrite for the same reason; a full data reset is at least
+    # as disruptive to what's on disk.
+    from annotation.visualization import slice_io
+
+    slice_io.clear_caches()
 
     if not keep_users:
         # Preserve superusers so admin access survives a wipe.

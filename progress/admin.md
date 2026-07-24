@@ -1,6 +1,6 @@
 # Manager Admin (Django Admin)
 
-> Part of the [docs](README.md). To extend admin screens/actions, see
+> Part of [progress/](README.md). To extend admin screens/actions, see
 > [codemap.md](codemap.md#manager-admin-the-managers-portal).
 
 Django Admin is the **primary operational interface for the Manager role**. It is

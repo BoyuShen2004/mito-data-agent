@@ -19,7 +19,10 @@ export interface DatasetMetadata {
 export interface Project {
   id: number;
   title: string;
+  /** Legacy single-dataset name; `datasets` is the real list. */
   dataset: string;
+  datasets: import("../api/datasets").Dataset[];
+  dataset_count: number;
   institution: number | null;
   institution_name: string;
   description: string;

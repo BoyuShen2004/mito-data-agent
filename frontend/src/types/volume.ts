@@ -3,6 +3,8 @@ import type { LabelType } from "./index";
 export interface Volume {
   id: number;
   project: number;
+  dataset: number | null;
+  dataset_name: string;
   name: string;
   source_volume: string;
   chunk_id: string;

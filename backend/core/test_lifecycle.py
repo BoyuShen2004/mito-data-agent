@@ -8,11 +8,10 @@ from core.choices import ProjectStatus, TaskStatus, TaskType, WorkflowType
 from core.lifecycle import (
     Lifecycle,
     classify_project,
-    classify_task,
     lifecycle_for_task_status,
     project_lifecycle_counts,
 )
-from projects.services import create_project, mark_project_reviewed, resolve_workflow_type
+from projects.services import create_project, resolve_workflow_type
 from volumes.models import Volume
 
 User = get_user_model()

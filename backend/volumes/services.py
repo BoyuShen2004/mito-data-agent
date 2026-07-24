@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -13,7 +14,7 @@ from core.choices import (
     LabelType,
     VolumeStatus,
 )
-from core.utils import inspect_volume_shape
+from core.utils import inspect_volume_shape, inspect_volume_voxel_size
 
 from .models import Volume
 
@@ -80,14 +81,101 @@ def _core_key(name: str, *, is_mask: bool) -> str:
     return "_".join(kept) if kept else _stem(name).lower()
 
 
-def detect_volume_pairs(filenames: list[str]) -> tuple[list[dict], list[str]]:
-    """Group filenames into ``(image, mask)`` pairs plus leftover unpaired files.
+# nnU-Net marks the channel index with a 4-digit suffix on *image* files
+# (``case_0000.nii.gz``); the matching label carries no suffix (``case.nii.gz``).
+# Stripping it yields the case id both sides share, which is what pairs them.
+_CHANNEL_SUFFIX_RE = re.compile(r"_(\d{4})$")
 
-    A mask is paired with the image whose core name matches after each side's
-    role markers are removed (e.g. ``_image``/``_mask``, ``_raw``/``_seg``, or a
-    bare name vs a ``_label`` suffix). Returns ``(pairs, unpaired)`` where each
-    pair is ``{"image", "mask", "base"}``.
+
+def case_key(name: str) -> str:
+    """The case id a file belongs to: its stem minus any channel suffix.
+
+    ``imagesTr/jrc_mus-kidney_crop129_0000.nii.gz`` and
+    ``labelsTr/jrc_mus-kidney_crop129.nii.gz`` both yield
+    ``jrc_mus-kidney_crop129``, which is what makes them a pair.
     """
+    return _CHANNEL_SUFFIX_RE.sub("", _stem(Path(name).name))
+
+
+def channel_index(name: str) -> int | None:
+    """The nnU-Net channel index of a file, or None when it has no suffix."""
+    match = _CHANNEL_SUFFIX_RE.search(_stem(Path(name).name))
+    return int(match.group(1)) if match else None
+
+
+def pair_by_case(
+    image_names: list[str], mask_names: list[str]
+) -> tuple[list[dict], list[str], list[str], list[str]]:
+    """Pair images with masks by case id — the cross-directory workhorse.
+
+    Images and masks may live in different directories; only their names are
+    considered here. When a case has several channels the lowest one represents
+    the volume and the rest are returned as ``extra_channels`` rather than being
+    silently dropped.
+
+    Returns ``(pairs, unmatched_images, unmatched_masks, extra_channels)``.
+    """
+    images_by_case: dict[str, list[str]] = {}
+    for name in image_names:
+        images_by_case.setdefault(case_key(name), []).append(name)
+    masks_by_case: dict[str, list[str]] = {}
+    for name in mask_names:
+        masks_by_case.setdefault(case_key(name), []).append(name)
+
+    pairs: list[dict] = []
+    extra_channels: list[str] = []
+    matched_images: set[str] = set()
+    matched_masks: set[str] = set()
+
+    for case in sorted(images_by_case):
+        channels = sorted(
+            images_by_case[case],
+            key=lambda n: (channel_index(n) is None, channel_index(n) or 0, n.lower()),
+        )
+        image, rest = channels[0], channels[1:]
+        extra_channels.extend(rest)
+        masks = sorted(masks_by_case.get(case, []), key=str.lower)
+        if masks:
+            pairs.append({"image": image, "mask": masks[0], "case": case})
+            matched_images.add(image)
+            matched_masks.add(masks[0])
+
+    unmatched_images = sorted(
+        (n for n in image_names if n not in matched_images and n not in extra_channels),
+        key=str.lower,
+    )
+    unmatched_masks = sorted(
+        (n for n in mask_names if n not in matched_masks), key=str.lower
+    )
+    return (
+        sorted(pairs, key=lambda p: p["case"].lower()),
+        unmatched_images,
+        unmatched_masks,
+        sorted(extra_channels, key=str.lower),
+    )
+
+
+def detect_volume_pairs(filenames: list[str]) -> tuple[list[dict], list[str]]:
+    """Group filenames from a *single* directory into pairs plus leftovers.
+
+    Two conventions are supported, tried in order:
+
+    1. nnU-Net in one folder — some files carry a ``_0000`` channel suffix and
+       others do not (``vol1_0000.tiff`` + ``vol1.tiff``); the suffixed files are
+       the images and the bare ones the masks.
+    2. Role tokens in the name (``cortex1_image`` + ``cortex1_mask``).
+
+    Returns ``(pairs, unpaired)`` where each pair is ``{"image", "mask", "base"}``.
+    """
+    suffixed = [n for n in filenames if channel_index(n) is not None]
+    bare = [n for n in filenames if channel_index(n) is None]
+    if suffixed and bare:
+        pairs, un_images, un_masks, extras = pair_by_case(suffixed, bare)
+        return (
+            [{"image": p["image"], "mask": p["mask"], "base": p["case"]} for p in pairs],
+            sorted(un_images + un_masks + extras, key=str.lower),
+        )
+
     images = sorted(n for n in filenames if not _is_mask_name(n))
     masks = sorted(n for n in filenames if _is_mask_name(n))
 
@@ -147,9 +235,127 @@ def _stored_path(abs_path: Path) -> str:
         return str(abs_path.resolve())
 
 
-def scan_hpc_directory(hpc_directory: str) -> dict:
-    """List supported data files directly inside ``hpc_directory``."""
-    directory = resolve_hpc_directory(hpc_directory)
+# --- nnU-Net dataset.json -------------------------------------------------
+#
+# An nnU-Net dataset root sits one level above imagesTr/labelsTr and carries a
+# dataset.json listing `training: [{image, label}]`. That list is authoritative:
+# it pairs files without any name guessing, and its descriptive fields save the
+# requester retyping metadata that is already recorded.
+
+# Directory-name prefixes that mark a folder's role, and the split they imply.
+_SPLIT_SUFFIXES = {"tr": "train", "ts": "test"}
+
+
+def split_for_directory(name: str) -> str:
+    """The nnU-Net split a directory name implies ('train'/'test'), else ''."""
+    lowered = name.lower()
+    for suffix, split in _SPLIT_SUFFIXES.items():
+        if lowered.endswith(suffix) and (
+            lowered.startswith("images") or lowered.startswith("labels")
+        ):
+            return split
+    return ""
+
+
+def _looks_like_mask_dir(name: str) -> bool:
+    lowered = name.lower()
+    return lowered.startswith(("label", "mask", "seg", "gt", "annotation"))
+
+
+def _looks_like_image_dir(name: str) -> bool:
+    lowered = name.lower()
+    return lowered.startswith(("image", "img", "raw", "em"))
+
+
+def read_dataset_manifest(directory: Path) -> dict | None:
+    """Load ``dataset.json`` from ``directory`` or its parent, if present.
+
+    Returns ``{"path", "pairs", "metadata"}`` where ``pairs`` are
+    ``{"image", "mask", "image_dir", "mask_dir"}`` entries taken verbatim from
+    the manifest's ``training`` list, or None when there is no readable manifest.
+    """
+    for candidate in (directory / "dataset.json", directory.parent / "dataset.json"):
+        if not candidate.is_file():
+            continue
+        try:
+            raw = json.loads(candidate.read_text())
+        except (OSError, ValueError):
+            continue
+        if not isinstance(raw, dict):
+            continue
+
+        pairs = []
+        for entry in raw.get("training") or []:
+            if not isinstance(entry, dict):
+                continue
+            image, label = entry.get("image"), entry.get("label")
+            if not image or not label:
+                continue
+            pairs.append(
+                {
+                    "image": Path(image).name,
+                    "mask": Path(label).name,
+                    "image_dir": Path(image).parent.name,
+                    "mask_dir": Path(label).parent.name,
+                    "case": case_key(image),
+                }
+            )
+
+        metadata = {}
+        for src, dest in (
+            ("description", "description"),
+            ("reference", "publication"),
+            ("licence", "licence"),
+            ("name", "dataset_source"),
+        ):
+            value = raw.get(src)
+            if isinstance(value, str) and value.strip():
+                metadata[dest] = value.strip()
+        # Class and channel maps are structured, not free text; keep them as-is.
+        if isinstance(raw.get("labels"), dict):
+            metadata["label_classes"] = raw["labels"]
+        if isinstance(raw.get("channel_names"), dict):
+            metadata["channel_names"] = raw["channel_names"]
+
+        return {"path": _stored_path(candidate), "pairs": pairs, "metadata": metadata}
+    return None
+
+
+def suggest_sibling_directories(directory: Path) -> dict:
+    """Sibling folders that look like image/mask sets, for quick-picking.
+
+    Lets a requester who typed ``.../imagesTr`` choose ``labelsTr`` vs
+    ``labelsTr-instance`` (or the Ts split) without hunting for the path.
+    """
+    images, masks = [], []
+    try:
+        siblings = sorted(directory.parent.iterdir(), key=lambda p: p.name.lower())
+    except OSError:
+        return {"images": [], "masks": []}
+
+    for entry in siblings:
+        if not entry.is_dir():
+            continue
+        count = sum(1 for f in entry.iterdir() if f.is_file() and matched_data_extension(f.name)) \
+            if _looks_like_mask_dir(entry.name) or _looks_like_image_dir(entry.name) else 0
+        if not count:
+            continue
+        item = {
+            "name": entry.name,
+            "path": _stored_path(entry),
+            "count": count,
+            "split": split_for_directory(entry.name),
+            "current": entry.resolve() == directory.resolve(),
+        }
+        if _looks_like_mask_dir(entry.name):
+            masks.append(item)
+        elif _looks_like_image_dir(entry.name):
+            images.append(item)
+    return {"images": images, "masks": masks}
+
+
+def _list_data_files(directory: Path) -> list[dict]:
+    """Supported data files directly inside ``directory``."""
     files = []
     for entry in sorted(directory.iterdir(), key=lambda p: p.name.lower()):
         if not entry.is_file():
@@ -169,12 +375,108 @@ def scan_hpc_directory(hpc_directory: str) -> dict:
                 "size": size,
             }
         )
-    pairs, unpaired = detect_volume_pairs([f["name"] for f in files])
+    return files
+
+
+def scan_data_sources(
+    image_directory: str, mask_directory: str = ""
+) -> dict:
+    """Scan an image directory and an optional mask directory, and pair them.
+
+    Images and masks routinely live in different folders (nnU-Net's
+    ``imagesTr``/``labelsTr``), so both are scanned independently and paired by
+    case id. When ``mask_directory`` is empty or the same folder, single-folder
+    conventions are used instead.
+
+    A ``dataset.json`` beside the directories is authoritative: if it describes
+    exactly the two folders being scanned, its ``training`` list supplies the
+    pairs and no name matching happens at all.
+    """
+    image_dir = resolve_hpc_directory(image_directory)
+    mask_dir = resolve_hpc_directory(mask_directory) if (mask_directory or "").strip() else None
+
+    image_files = _list_data_files(image_dir)
+    image_names = [f["name"] for f in image_files]
+    separate = mask_dir is not None and mask_dir != image_dir
+    mask_files = _list_data_files(mask_dir) if separate else []
+    mask_names = [f["name"] for f in mask_files]
+
+    manifest = read_dataset_manifest(image_dir)
+    pairing_source = "filename"
+    extra_channels: list[str] = []
+
+    if separate:
+        manifest_pairs = _manifest_pairs_for(manifest, image_dir, mask_dir, image_names, mask_names)
+        if manifest_pairs is not None:
+            pairs = manifest_pairs
+            paired_images = {p["image"] for p in pairs}
+            paired_masks = {p["mask"] for p in pairs}
+            unmatched_images = sorted((n for n in image_names if n not in paired_images), key=str.lower)
+            unmatched_masks = sorted((n for n in mask_names if n not in paired_masks), key=str.lower)
+            pairing_source = "dataset.json"
+        else:
+            pairs, unmatched_images, unmatched_masks, extra_channels = pair_by_case(
+                image_names, mask_names
+            )
+    else:
+        detected, unpaired = detect_volume_pairs(image_names)
+        pairs = [{"image": p["image"], "mask": p["mask"], "case": p["base"]} for p in detected]
+        unmatched_images, unmatched_masks = unpaired, []
+
     return {
-        "directory": _stored_path(directory),
-        "files": files,
+        "image_directory": _stored_path(image_dir),
+        "mask_directory": _stored_path(mask_dir) if separate else "",
+        "image_files": image_files,
+        "mask_files": mask_files,
         "pairs": pairs,
-        "unpaired": unpaired,
+        "unmatched_images": unmatched_images,
+        "unmatched_masks": unmatched_masks,
+        "extra_channels": extra_channels,
+        "pairing_source": pairing_source,
+        "split": split_for_directory(image_dir.name),
+        "suggestions": suggest_sibling_directories(image_dir),
+        "dataset_metadata": (manifest or {}).get("metadata") or {},
+        "manifest_path": (manifest or {}).get("path", ""),
+    }
+
+
+def _manifest_pairs_for(
+    manifest: dict | None,
+    image_dir: Path,
+    mask_dir: Path,
+    image_names: list[str],
+    mask_names: list[str],
+) -> list[dict] | None:
+    """Manifest pairs, but only when they describe these two folders.
+
+    Picking ``labelsTr-instance`` when the manifest documents ``labelsTr`` means
+    the manifest does not apply; the caller falls back to name matching.
+    """
+    if not manifest or not manifest.get("pairs"):
+        return None
+    available_images, available_masks = set(image_names), set(mask_names)
+    pairs = []
+    for entry in manifest["pairs"]:
+        if entry["image_dir"] != image_dir.name or entry["mask_dir"] != mask_dir.name:
+            return None
+        # A manifest listing files that are not on disk is stale, not authoritative.
+        if entry["image"] not in available_images or entry["mask"] not in available_masks:
+            return None
+        pairs.append({"image": entry["image"], "mask": entry["mask"], "case": entry["case"]})
+    return pairs or None
+
+
+def scan_hpc_directory(hpc_directory: str) -> dict:
+    """Single-directory scan (legacy shape, kept for existing callers)."""
+    result = scan_data_sources(hpc_directory)
+    return {
+        "directory": result["image_directory"],
+        "files": result["image_files"],
+        "pairs": [
+            {"image": p["image"], "mask": p["mask"], "base": p["case"]}
+            for p in result["pairs"]
+        ],
+        "unpaired": result["unmatched_images"],
     }
 
 
@@ -183,7 +485,9 @@ def register_dataset(
     created_by,
     dataset: str,
     volume: str,
-    hpc_directory: str,
+    image_directory: str = "",
+    mask_directory: str = "",
+    hpc_directory: str = "",
     pairs: list[dict] | None = None,
     files: list[dict] | None = None,
     metadata: dict | None = None,
@@ -195,23 +499,28 @@ def register_dataset(
 ) -> tuple:
     """Register HPC file references as chunks/crops under a dataset + volume.
 
-    ``dataset`` and ``volume`` are required. Every referenced file must be a
-    supported ``.tif``/``.tiff``/``.nii.gz`` file in ``hpc_directory``.
+    ``dataset`` and ``volume`` are required, as is an image directory — given
+    either as ``image_directory`` or, for older callers, ``hpc_directory``.
+    Masks may live in a **separate** ``mask_directory`` (the usual nnU-Net
+    ``imagesTr``/``labelsTr`` split); when it is omitted, masks are looked for
+    alongside the images. Every referenced file must be a supported
+    ``.tif``/``.tiff``/``.nii.gz`` file in its own directory.
 
     Registration is flexible about image/mask pairing:
 
     * ``pairs`` — explicit ``[{image, mask?, chunk_id?}, ...]`` entries. Each
-      becomes one volume; when ``mask`` is given it is stored as the label. This
-      lets a single image+mask pair be picked out of a folder of other volumes.
+      becomes one volume; when ``mask`` is given it is stored as the label,
+      resolved against ``mask_directory``.
     * ``files`` — image-only ``[{path|name, chunk_id?}, ...]`` entries (no masks).
-    * neither — the directory is auto-scanned and **all detected image+mask
-      pairs plus any unpaired images** are registered.
+    * neither — the directories are scanned and **all detected image+mask pairs
+      plus any unpaired images** are registered.
 
     ``label_type`` is applied to volumes that get a mask (defaulting to
     ``prediction`` so they become proofreading tasks). Returns ``(project,
-    [Volume, ...])``; a new project is created unless ``project`` is given.
+    [Volume, ...])``; a new project is created unless ``project`` is given, and
+    the volumes are grouped under a :class:`projects.Dataset` named ``dataset``.
     """
-    from projects.services import create_project
+    from projects.services import create_project, get_or_create_dataset
 
     dataset = (dataset or "").strip()
     volume = (volume or "").strip()
@@ -220,9 +529,14 @@ def register_dataset(
     if not volume:
         raise DataRegistrationError("A volume name is required.")
 
-    directory = resolve_hpc_directory(hpc_directory)
+    image_source = (image_directory or hpc_directory or "").strip()
+    if not image_source:
+        raise DataRegistrationError("An image directory is required.")
+    directory = resolve_hpc_directory(image_source)
+    mask_source = (mask_directory or "").strip()
+    mask_dir = resolve_hpc_directory(mask_source) if mask_source else directory
 
-    def _resolve(raw_name: str, kind: str = "file"):
+    def _resolve(raw_name: str, kind: str = "file", *, where: Path | None = None):
         name = (raw_name or "").strip()
         if not name:
             raise DataRegistrationError(f"A {kind} name is required.")
@@ -233,7 +547,7 @@ def register_dataset(
                 f"Unsupported file type: {base}. Only .tif, .tiff and "
                 ".nii.gz are accepted."
             )
-        candidate = (directory / base).resolve()
+        candidate = ((where or directory) / base).resolve()
         if not candidate.is_file():
             raise DataRegistrationError(f"File not found in directory: {base}")
         return base, candidate, ext
@@ -246,7 +560,7 @@ def register_dataset(
             image_base, image_path, image_ext = _resolve(item.get("image"), "image")
             mask_name = (item.get("mask") or "").strip()
             if mask_name:
-                mask_base, mask_path, _ = _resolve(mask_name, "mask")
+                mask_base, mask_path, _ = _resolve(mask_name, "mask", where=mask_dir)
             else:
                 mask_base = mask_path = None
             entries.append(
@@ -263,14 +577,14 @@ def register_dataset(
                  item.get("chunk_id", ""))
             )
     else:
-        scanned = scan_hpc_directory(hpc_directory)
+        scanned = scan_data_sources(image_source, mask_source)
         for pair in scanned["pairs"]:
             image_base, image_path, image_ext = _resolve(pair["image"], "image")
-            mask_base, mask_path, _ = _resolve(pair["mask"], "mask")
+            mask_base, mask_path, _ = _resolve(pair["mask"], "mask", where=mask_dir)
             entries.append(
                 (image_base, image_path, image_ext, mask_base, mask_path, "")
             )
-        for name in scanned["unpaired"]:
+        for name in scanned["unmatched_images"]:
             image_base, image_path, image_ext = _resolve(name, "image")
             entries.append((image_base, image_path, image_ext, None, None, ""))
 
@@ -286,28 +600,49 @@ def register_dataset(
             created_by=created_by,
             description=description,
             annotation_type=annotation_type,
-            metadata=metadata or {},
+            # Metadata describes the data, not the project, so it goes on the
+            # dataset below — a project may hold several with differing values.
+            metadata={},
             reviewed=reviewed,
         )
+
+    # Metadata describes *this* data, so it belongs to the dataset. Registering
+    # again under the same name adds volumes to the existing dataset.
+    dataset_row = get_or_create_dataset(
+        project=project,
+        name=dataset,
+        description=description,
+        metadata=metadata or {},
+        image_directory=_stored_path(directory),
+        mask_directory=_stored_path(mask_dir) if mask_source else "",
+    )
 
     # A provided mask implies a real label; default it to a proofreadable type.
     mask_label_type = label_type
     if not mask_label_type or mask_label_type == LabelType.NONE:
         mask_label_type = LabelType.PREDICTION
 
+    # Which nnU-Net split these files came from, so train and test data stay
+    # distinguishable once registered.
+    split = split_for_directory(directory.name)
+
     created = []
     for image_base, image_path, image_ext, _mask_base, mask_path, chunk_id in entries:
         has_mask = mask_path is not None
+        # The case id names the volume: 'case_00', not 'case_00_0000.tiff'.
+        case = case_key(image_base)
         vol = register_volume(
             project=project,
-            name=chunk_id or image_base,
+            dataset=dataset_row,
+            name=chunk_id or case,
             image_path=_stored_path(image_path),
             label_path=_stored_path(mask_path) if has_mask else "",
             label_type=mask_label_type if has_mask else LabelType.NONE,
             file_format=_file_format_for(image_ext),
+            metadata={"split": split} if split else None,
         )
         vol.source_volume = volume
-        vol.chunk_id = chunk_id
+        vol.chunk_id = chunk_id or case
         vol.save(update_fields=["source_volume", "chunk_id"])
         created.append(vol)
 
@@ -316,7 +651,8 @@ def register_dataset(
 
 def register_volume(
     *,
-    project,
+    project=None,
+    dataset=None,
     name: str,
     image_path: str = "",
     image_file=None,
@@ -328,14 +664,23 @@ def register_volume(
     metadata: dict | None = None,
     autodetect_shape: bool = True,
 ) -> Volume:
-    """Register (or upload) an image volume under a project.
+    """Register (or upload) an image volume under a project and dataset.
+
+    Either ``project`` or ``dataset`` must be given; the project is taken from
+    the dataset when omitted, keeping the denormalised FK consistent.
 
     ``voxel_size`` may be a ``(z, y, x)`` tuple. If ``autodetect_shape`` is set
     and the image is a readable TIFF under ``MITO_DATA_ROOT``, the ``(x, y, z)``
     shape is filled in automatically.
     """
+    if project is None and dataset is None:
+        raise DataRegistrationError("A project or dataset is required.")
+    if project is None:
+        project = dataset.project
+
     volume = Volume(
         project=project,
+        dataset=dataset,
         name=name,
         image_path=image_path or "",
         label_path=label_path or "",
@@ -353,14 +698,19 @@ def register_volume(
 
     volume.save()
 
-    if autodetect_shape and volume.shape_z is None:
+    if autodetect_shape and (volume.shape_z is None or volume.voxel_size_z is None):
         _try_autodetect_shape(volume)
 
     return volume
 
 
 def _try_autodetect_shape(volume: Volume) -> None:
-    """Fill shape_x/y/z from the image file if it is a readable TIFF."""
+    """Fill shape and voxel size from the image file when they can be read.
+
+    Shape comes from TIFF headers; voxel size from TIFF resolution/ImageJ
+    metadata (or NIfTI pixdim). Each is only filled when it is still blank, so a
+    manually-entered value is never overwritten.
+    """
     location = volume.image_location
     if not location:
         return
@@ -369,18 +719,45 @@ def _try_autodetect_shape(volume: Volume) -> None:
     candidate = Path(location)
     if not candidate.is_absolute():
         candidate = Path(settings.MITO_DATA_ROOT) / location
-    shape = inspect_volume_shape(candidate)
-    if shape is not None:
-        x, y, z = shape
-        volume.shape_x, volume.shape_y, volume.shape_z = x, y, z
-        volume.save(update_fields=["shape_x", "shape_y", "shape_z"])
+
+    changed: list[str] = []
+    if volume.shape_z is None:
+        shape = inspect_volume_shape(candidate)
+        if shape is not None:
+            volume.shape_x, volume.shape_y, volume.shape_z = shape
+            changed += ["shape_x", "shape_y", "shape_z"]
+
+    if volume.voxel_size_z is None:
+        voxel = inspect_volume_voxel_size(candidate)
+        if voxel is not None:
+            z, y, x = voxel
+            if z is not None:
+                volume.voxel_size_z = z
+                changed.append("voxel_size_z")
+            if y is not None:
+                volume.voxel_size_y = y
+                changed.append("voxel_size_y")
+            if x is not None:
+                volume.voxel_size_x = x
+                changed.append("voxel_size_x")
+
+    if changed:
+        volume.save(update_fields=changed)
 
 
 def update_volume_metadata(volume: Volume, **fields) -> Volume:
-    """Update whitelisted volume fields (metadata, shape, voxel size, label)."""
+    """Update whitelisted volume fields.
+
+    ``image_path``/``label_path`` are editable so a wrong pairing can be fixed
+    without re-registering, and ``dataset`` so a volume can be moved to the
+    right dataset (its project follows).
+    """
     allowed = {
         "name",
+        "chunk_id",
+        "source_volume",
         "label_type",
+        "image_path",
         "label_path",
         "file_format",
         "shape_x",
@@ -396,6 +773,11 @@ def update_volume_metadata(volume: Volume, **fields) -> Volume:
         if key == "metadata":
             volume.metadata = {**(volume.metadata or {}), **(value or {})}
             changed.append("metadata")
+        elif key == "dataset" and value is not None:
+            volume.dataset = value
+            # The project is denormalised from the dataset; keep them in step.
+            volume.project = value.project
+            changed.extend(["dataset", "project"])
         elif key in allowed:
             setattr(volume, key, value)
             changed.append(key)
@@ -471,6 +853,7 @@ def create_tasks_from_volume(
                 task_type=resolved_type,
                 priority=priority,
                 instructions=instructions,
+                deadline=volume.project.deadline,
             )
         )
     created = AnnotationTask.objects.bulk_create(tasks)

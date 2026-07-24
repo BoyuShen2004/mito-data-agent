@@ -25,7 +25,7 @@ export default function ProofreadingLaunch({ taskId }: { taskId: number }) {
     [taskId],
   );
 
-  if (loading) return <p className="muted">Loading proofreading options…</p>;
+  if (loading) return <p className="muted">Loading annotation options…</p>;
   if (error) return <div className="error">{error}</div>;
   if (!info) return null;
 
@@ -34,7 +34,7 @@ export default function ProofreadingLaunch({ taskId }: { taskId: number }) {
   return (
     <div className="card">
       <div className="row spread">
-        <h3>Proofreading</h3>
+        <h3>Annotation</h3>
         <span className="muted">provider: {info.provider}</span>
       </div>
 

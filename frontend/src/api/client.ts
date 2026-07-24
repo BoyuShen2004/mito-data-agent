@@ -27,6 +27,10 @@ interface RequestOptions {
   body?: unknown;
   // When true, `body` is sent as-is (FormData) without JSON headers.
   isForm?: boolean;
+  // Lets a caller cancel an in-flight request (e.g. a superseded AI predict
+  // — see AnnotationCanvas.tsx) — the browser drops the response, this
+  // function still rejects with an AbortError the caller can filter out.
+  signal?: AbortSignal;
 }
 
 function extractMessage(data: unknown, fallback: string): string {
@@ -43,7 +47,7 @@ function extractMessage(data: unknown, fallback: string): string {
 
 export async function apiRequest<T>(
   path: string,
-  { method = "GET", body, isForm = false }: RequestOptions = {},
+  { method = "GET", body, isForm = false, signal }: RequestOptions = {},
 ): Promise<T> {
   const headers: Record<string, string> = {};
   const token = getToken();
@@ -59,7 +63,7 @@ export async function apiRequest<T>(
     }
   }
 
-  const res = await fetch(`/api${path}`, { method, headers, body: payload });
+  const res = await fetch(`/api${path}`, { method, headers, body: payload, signal });
 
   if (res.status === 204) return undefined as T;
 
@@ -73,11 +77,13 @@ export async function apiRequest<T>(
 }
 
 export const api = {
-  get: <T>(path: string) => apiRequest<T>(path),
-  post: <T>(path: string, body?: unknown) =>
-    apiRequest<T>(path, { method: "POST", body }),
+  get: <T>(path: string, signal?: AbortSignal) => apiRequest<T>(path, { signal }),
+  post: <T>(path: string, body?: unknown, signal?: AbortSignal) =>
+    apiRequest<T>(path, { method: "POST", body, signal }),
   postForm: <T>(path: string, body: FormData) =>
     apiRequest<T>(path, { method: "POST", body, isForm: true }),
+  put: <T>(path: string, body?: unknown) =>
+    apiRequest<T>(path, { method: "PUT", body }),
   patch: <T>(path: string, body?: unknown) =>
     apiRequest<T>(path, { method: "PATCH", body }),
   patchForm: <T>(path: string, body: FormData) =>

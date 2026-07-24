@@ -69,12 +69,19 @@ class ProviderTests(TestCase):
         self.assertTrue(report["errors"])
 
     # --- proofreading ------------------------------------------------------
+    @override_settings(MITO_PROOFREADING_PROVIDER="placeholder")
     def test_placeholder_proofreading_is_download_not_editable(self):
         info = get_task_proofreading_info(self.task)
         self.assertEqual(info["mode"], "download")
         self.assertFalse(info["editable"])
         self.assertTrue(info["download_available"])
         self.assertEqual(info["download"]["task_id"], self.task.id)
+
+    def test_inapp_proofreading_is_editable_by_default(self):
+        info = get_task_proofreading_info(self.task)
+        self.assertEqual(info["provider"], "inapp")
+        self.assertEqual(info["mode"], "edit")
+        self.assertTrue(info["editable"])
 
     @override_settings(
         MITO_PROOFREADING_PROVIDER="neuroglancer",
@@ -93,10 +100,17 @@ class ProviderTests(TestCase):
         self.assertEqual(info.mode, "unavailable")
 
     # --- visualization -----------------------------------------------------
+    @override_settings(MITO_VISUALIZATION_PROVIDER="placeholder")
     def test_placeholder_visualization_unavailable(self):
         state = get_visualization_state(self.task)
         self.assertFalse(state["available"])
         self.assertEqual(state["url"], "")
+
+    def test_inapp_visualization_gives_viewer_url(self):
+        state = get_visualization_state(self.task)
+        self.assertEqual(state["provider"], "inapp")
+        self.assertEqual(state["url"], f"/viewer/tasks/{self.task.id}")
+        self.assertEqual(state["mode"], "slice_viewer")
 
     @override_settings(
         MITO_VISUALIZATION_PROVIDER="neuroglancer",

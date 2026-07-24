@@ -1,6 +1,15 @@
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { getVolume, splitVolume, updateVolume } from "../api/volumes";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import {
+  deleteVolume,
+  editVolume,
+  getVolume,
+  splitVolume,
+  updateVolume,
+  volumeDependents,
+} from "../api/volumes";
+import DeleteButton from "../components/DeleteButton";
+import type { Volume } from "../types/volume";
 import { listProjectTasks } from "../api/tasks";
 import { useAuth } from "../auth/AuthContext";
 import { useAsync } from "../hooks/useAsync";
@@ -19,6 +28,8 @@ export default function VolumeDetailPage() {
   const { id } = useParams();
   const volumeId = Number(id);
   const { isManager } = useAuth();
+  const navigate = useNavigate();
+  const [editing, setEditing] = useState(false);
   const vol = useAsync(() => getVolume(volumeId), [volumeId]);
   const tasks = useAsync(
     () =>
@@ -62,8 +73,42 @@ export default function VolumeDetailPage() {
     <>
       <div className="row spread">
         <h1>{v.name}</h1>
-        <Link to={`/projects/${v.project}`}>← Back to project</Link>
+        <div className="row">
+          <Link to={`/viewer/volumes/${volumeId}`}>
+            <button className="secondary">View data</button>
+          </Link>
+          <Link to={`/projects/${v.project}`}>View project →</Link>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => setEditing((e) => !e)}
+          >
+            {editing ? "Close" : "Edit volume"}
+          </button>
+          <DeleteButton
+            label={`volume "${v.name}"`}
+            dependents={() => volumeDependents(v.id)}
+            onDelete={(force) => deleteVolume(v.id, force)}
+            onDone={() => navigate(`/projects/${v.project}`)}
+          />
+        </div>
       </div>
+
+      {v.dataset_name && (
+        <p className="muted">
+          Dataset: <strong>{v.dataset_name}</strong>
+        </p>
+      )}
+
+      {editing && (
+        <VolumeEditForm
+          volume={v}
+          onSaved={() => {
+            setEditing(false);
+            vol.reload();
+          }}
+        />
+      )}
 
       <div className="card">
         <h3>Volume metadata</h3>
@@ -206,6 +251,89 @@ function EditLabelType({
       </label>
       <button className="secondary" onClick={save} disabled={busy}>
         Save
+      </button>
+    </div>
+  );
+}
+
+/** Correct a volume after registration: its name, paths, or a wrong pairing. */
+function VolumeEditForm({
+  volume,
+  onSaved,
+}: {
+  volume: Volume;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState(volume.name);
+  const [chunkId, setChunkId] = useState(volume.chunk_id);
+  const [sourceVolume, setSourceVolume] = useState(volume.source_volume);
+  const [imagePath, setImagePath] = useState(volume.image_path);
+  const [labelPath, setLabelPath] = useState(volume.label_path);
+  const [labelType, setLabelType] = useState<string>(volume.label_type);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await editVolume(volume.id, {
+        name,
+        chunk_id: chunkId,
+        source_volume: sourceVolume,
+        image_path: imagePath,
+        label_path: labelPath,
+        label_type: labelType,
+      });
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card edit-form">
+      <h3>Edit volume pair</h3>
+      {error && <div className="error">{error}</div>}
+      <div className="row">
+        <label className="field" style={{ flex: 1 }}>
+          <span>Name</span>
+          <input value={name} onChange={(e) => setName(e.target.value)} />
+        </label>
+        <label className="field" style={{ flex: 1 }}>
+          <span>Chunk / crop id</span>
+          <input value={chunkId} onChange={(e) => setChunkId(e.target.value)} />
+        </label>
+        <label className="field" style={{ flex: 1 }}>
+          <span>Source volume</span>
+          <input
+            value={sourceVolume}
+            onChange={(e) => setSourceVolume(e.target.value)}
+          />
+        </label>
+      </div>
+      <label className="field">
+        <span>Image path</span>
+        <input value={imagePath} onChange={(e) => setImagePath(e.target.value)} />
+      </label>
+      <label className="field">
+        <span>Mask / label path — repoint this to fix a wrong pairing</span>
+        <input value={labelPath} onChange={(e) => setLabelPath(e.target.value)} />
+      </label>
+      <label className="field" style={{ maxWidth: "16rem" }}>
+        <span>Label type</span>
+        <select value={labelType} onChange={(e) => setLabelType(e.target.value)}>
+          {["prediction", "proofread", "partial", "none"].map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+      </label>
+      <button type="button" onClick={save} disabled={busy}>
+        {busy ? "Saving…" : "Save volume"}
       </button>
     </div>
   );

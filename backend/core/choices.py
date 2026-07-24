@@ -103,6 +103,26 @@ class TaskStatus(models.TextChoices):
 ACTIVE_TASK_STATUSES = (TaskStatus.ASSIGNED, TaskStatus.IN_PROGRESS)
 
 
+class PriorityLevel(models.IntegerChoices):
+    """How urgently a task should be picked up (higher is assigned first)."""
+
+    LOWEST = 1, "Lowest"
+    LOW = 2, "Low"
+    NORMAL = 3, "Normal"
+    HIGH = 4, "High"
+    URGENT = 5, "Urgent"
+
+
+class DifficultyLevel(models.IntegerChoices):
+    """How hard a task is to annotate (higher is harder)."""
+
+    VERY_EASY = 1, "Very easy"
+    EASY = 2, "Easy"
+    MODERATE = 3, "Moderate"
+    HARD = 4, "Hard"
+    VERY_HARD = 5, "Very hard"
+
+
 class QCStatus(models.TextChoices):
     NOT_RUN = "not_run", "Not run"
     PASSED = "passed", "Passed"
@@ -114,6 +134,16 @@ class ReviewDecision(models.TextChoices):
     APPROVED = "approved", "Approved"
     REJECTED = "rejected", "Rejected"
     REVISION_REQUESTED = "revision_requested", "Revision requested"
+
+
+class SubmissionSource(models.TextChoices):
+    """Where an :class:`~annotation.models.AnnotationSubmission`'s content
+    came from — drives both QC (``annotation.quality_control.adapters.
+    basic``) and what "approve" actually does (``annotation.services.
+    approve_submission``)."""
+
+    UPLOAD = "upload", "Uploaded file"
+    INAPP = "inapp", "In-app editor"
 
 
 # --- Processing / HPC jobs --------------------------------------------------

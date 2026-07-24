@@ -9,11 +9,12 @@ from .interfaces import ProofreadingProvider
 
 PROOFREADING_PROVIDERS: dict[str, str] = {
     "placeholder": "annotation.proofreading.adapters.placeholder.PlaceholderProofreadingProvider",
+    "inapp": "annotation.proofreading.adapters.inapp.InAppProofreadingProvider",
     "external_tool": "annotation.proofreading.adapters.external_tool.ExternalToolProofreadingProvider",
     "neuroglancer": "annotation.proofreading.adapters.neuroglancer.NeuroglancerProofreadingProvider",
 }
 
-DEFAULT_PROOFREADING_PROVIDER = "placeholder"
+DEFAULT_PROOFREADING_PROVIDER = "inapp"
 
 
 def get_proofreading_provider(name: str | None = None) -> ProofreadingProvider:

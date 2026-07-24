@@ -2,8 +2,11 @@ from django.conf import settings
 from django.db import models
 
 from core.choices import (
+    DifficultyLevel,
+    PriorityLevel,
     QCStatus,
     ReviewDecision,
+    SubmissionSource,
     TaskStatus,
     TaskType,
 )
@@ -42,8 +45,12 @@ class AnnotationTask(models.Model):
     status = models.CharField(
         max_length=20, choices=TaskStatus.choices, default=TaskStatus.UNASSIGNED
     )
-    priority = models.IntegerField(default=0)
-    difficulty = models.IntegerField(default=1)
+    priority = models.IntegerField(
+        choices=PriorityLevel.choices, default=PriorityLevel.NORMAL
+    )
+    difficulty = models.IntegerField(
+        choices=DifficultyLevel.choices, default=DifficultyLevel.MODERATE
+    )
     instructions = models.TextField(blank=True)
     deadline = models.DateField(null=True, blank=True)
 
@@ -76,8 +83,15 @@ class AnnotationSubmission(models.Model):
         blank=True,
         related_name="submissions",
     )
+    # Null/blank for an in-app submission (``source=inapp``) — there's no
+    # uploaded file, the "submission" is a checkpoint of the volume's working
+    # label copy (see ``annotation.label_paths.working_label_rel_path``).
     label_file = models.FileField(
-        storage=get_mito_storage, upload_to=submission_upload_to
+        storage=get_mito_storage, upload_to=submission_upload_to,
+        blank=True, null=True,
+    )
+    source = models.CharField(
+        max_length=10, choices=SubmissionSource.choices, default=SubmissionSource.UPLOAD,
     )
     notes = models.TextField(blank=True)
     qc_status = models.CharField(

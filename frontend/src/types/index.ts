@@ -25,6 +25,11 @@ export type TaskStatus =
   | "rejected"
   | "revision_requested";
 
+export type AnnotationType =
+  | "semantic_segmentation"
+  | "instance_segmentation"
+  | "proofreading";
+
 export type ProjectStatus =
   | "draft"
   | "active"

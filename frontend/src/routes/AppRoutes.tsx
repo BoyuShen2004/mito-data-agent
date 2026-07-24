@@ -9,31 +9,30 @@ import AnnotatorDashboard from "../pages/AnnotatorDashboard";
 import RequesterDashboard from "../pages/RequesterDashboard";
 import RegisterDataPage from "../pages/RegisterDataPage";
 import ProjectListPage from "../pages/ProjectListPage";
+import NewProjectPage from "../pages/NewProjectPage";
 import ProjectDetailPage from "../pages/ProjectDetailPage";
 import VolumeDetailPage from "../pages/VolumeDetailPage";
 import TaskDetailPage from "../pages/TaskDetailPage";
+import { TaskViewerPage, VolumeViewerPage } from "../pages/ViewerPage";
 import SubmitTaskPage from "../pages/SubmitTaskPage";
 import ReviewSubmissionPage from "../pages/ReviewSubmissionPage";
+import { effectiveRole, homePathForRole, homeLabelForRole } from "./roles";
+import type { HomeRole } from "./roles";
 
-export type HomeRole = "manager" | "requester" | "annotator";
-
-export function effectiveRole(role: string | null | undefined): HomeRole {
-  if (role === "manager") return "manager";
-  if (role === "requester" || role === "client") return "requester";
-  return "annotator";
-}
-
-export function homePathForRole(role: string | null | undefined): string {
-  return `/${effectiveRole(role)}`;
-}
+export { effectiveRole, homePathForRole, homeLabelForRole };
+export type { HomeRole };
 
 // `roles` restricts a route to specific roles; omit to allow any authenticated user.
+// `fullBleed` keeps the global navbar but skips the centered max-width container
+// so viewer/editor pages can fill the remaining window under the navbar.
 function RequireAuth({
   children,
   roles,
+  fullBleed = false,
 }: {
   children: ReactNode;
   roles?: HomeRole[];
+  fullBleed?: boolean;
 }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="center">Loading…</div>;
@@ -41,7 +40,7 @@ function RequireAuth({
   if (roles && !roles.includes(effectiveRole(user.role))) {
     return <Navigate to={homePathForRole(user.role)} replace />;
   }
-  return <Layout>{children}</Layout>;
+  return <Layout fullBleed={fullBleed}>{children}</Layout>;
 }
 
 function HomeRedirect() {
@@ -96,6 +95,17 @@ export default function AppRoutes() {
         }
       />
 
+      {/* Step 1 of new work: create the project, then register data into it.
+          Requesters own projects too, so both roles may create one. */}
+      <Route
+        path="/projects/new"
+        element={
+          <RequireAuth roles={["manager", "requester"]}>
+            <NewProjectPage />
+          </RequireAuth>
+        }
+      />
+
       {/* Project + volume detail — managers and requesters (own projects) */}
       <Route
         path="/projects/:id"
@@ -146,6 +156,34 @@ export default function AppRoutes() {
         element={
           <RequireAuth>
             <TaskDetailPage />
+          </RequireAuth>
+        }
+      />
+
+      {/* Visualization — any role that can view. Editing entry is gated in the
+          page (managers + assigned annotator); requesters only reach /viewer.
+          fullBleed keeps the global navbar but lets the canvas fill the rest. */}
+      <Route
+        path="/viewer/volumes/:id"
+        element={
+          <RequireAuth fullBleed>
+            <VolumeViewerPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/viewer/tasks/:id"
+        element={
+          <RequireAuth fullBleed>
+            <TaskViewerPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/editor/tasks/:id"
+        element={
+          <RequireAuth fullBleed roles={["manager", "annotator"]}>
+            <TaskViewerPage editable />
           </RequireAuth>
         }
       />

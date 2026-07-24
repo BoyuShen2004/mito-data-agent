@@ -4,6 +4,7 @@ import { useAsync } from "../hooks/useAsync";
 import { useAuth } from "../auth/AuthContext";
 import StatusBadge from "../components/StatusBadge";
 import MetadataCard from "../components/MetadataCard";
+import { difficultyLabel, priorityLabel } from "../labels";
 import ProofreadingLaunch from "../features/proofreading/ProofreadingLaunch";
 
 export default function TaskDetailPage() {
@@ -25,7 +26,17 @@ export default function TaskDetailPage() {
     <>
       <div className="row spread">
         <h1>Task #{t.id}</h1>
-        <StatusBadge value={t.status} />
+        <div className="row">
+          <StatusBadge value={t.status} />
+          <Link to={`/viewer/tasks/${t.id}`}>
+            <button className="secondary">View data</button>
+          </Link>
+          {(mine || isManager) && (
+            <Link to={`/editor/tasks/${t.id}`}>
+              <button>Annotate</button>
+            </Link>
+          )}
+        </div>
       </div>
 
       <div className="card">
@@ -68,6 +79,28 @@ export default function TaskDetailPage() {
               </td>
             </tr>
             <tr>
+              <th>Shape (z,y,x)</th>
+              <td>
+                {t.shape_z ?? "?"}, {t.shape_y ?? "?"}, {t.shape_x ?? "?"}
+              </td>
+            </tr>
+            <tr>
+              <th>Voxel size (z,y,x)</th>
+              <td>
+                {t.voxel_size_z != null || t.voxel_size_y != null || t.voxel_size_x != null
+                  ? `${t.voxel_size_z ?? "?"}, ${t.voxel_size_y ?? "?"}, ${t.voxel_size_x ?? "?"}`
+                  : "—"}
+              </td>
+            </tr>
+            <tr>
+              <th>Priority</th>
+              <td>{priorityLabel(t.priority)}</td>
+            </tr>
+            <tr>
+              <th>Difficulty</th>
+              <td>{difficultyLabel(t.difficulty)}</td>
+            </tr>
+            <tr>
               <th>Image path</th>
               <td>{t.image_location || "—"}</td>
             </tr>
@@ -87,7 +120,7 @@ export default function TaskDetailPage() {
         </table>
       </div>
 
-      <MetadataCard metadata={t.project_metadata} />
+      <MetadataCard metadata={t.dataset_metadata} />
 
       {(mine || isManager) && <ProofreadingLaunch taskId={t.id} />}
 

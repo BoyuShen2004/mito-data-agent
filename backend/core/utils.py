@@ -1,23 +1,13 @@
-"""Shared, dependency-light utilities.
+"""Shared, dependency-light volume-inspection utilities.
 
-Includes the volume-inspection helpers salvaged from the previous codebase
-(fast TIFF shape reading from headers, and label mito-count) plus a slug helper.
+Fast TIFF shape/voxel-size reading from headers, without loading pixel data.
 These are deterministic and safe to call from views, services, management
 commands, and future agent tools.
 """
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
-
-
-def safe_slug(text: str) -> str:
-    """Make a name safe for folders, URLs, and file stems."""
-    slug = (text or "").strip().lower()
-    slug = re.sub(r"[^\w\-]+", "-", slug)
-    slug = re.sub(r"-+", "-", slug).strip("-")
-    return slug or "unnamed"
 
 
 def array_shape_to_xyz(shape: tuple) -> tuple[int, int, int]:
@@ -72,17 +62,67 @@ def inspect_volume_shape(path: str | Path) -> tuple[int, int, int] | None:
     return None
 
 
-def count_label_instances(path: str | Path) -> int | None:
-    """Count unique non-zero labels in a TIFF label volume, or ``None``."""
-    p = Path(path)
-    if not p.exists() or p.suffix.lower() not in {".tif", ".tiff"}:
-        return None
-    try:
-        import numpy as np
-        import tifffile
+def _tiff_voxel_size(path: str | Path) -> tuple[float, float, float] | None:
+    """Read a TIFF's ``(z, y, x)`` voxel size from its headers, if recorded.
 
-        arr = tifffile.imread(str(p))
-        unique = np.unique(arr)
-        return int(np.sum(unique != 0))
+    ImageJ hyperstacks store the z-spacing (and physical unit) in the ImageJ
+    metadata block, while the in-plane x/y spacing comes from the standard
+    ``XResolution``/``YResolution`` tags (pixels per unit → spacing = 1/res).
+    Returns ``None`` when nothing usable is found; individual axes may be
+    ``None`` when only some are recorded.
+    """
+    import tifffile
+
+    with tifffile.TiffFile(str(path)) as tif:
+        page = tif.pages[0]
+        ij = tif.imagej_metadata or {}
+
+        def _spacing_from_tag(tag_name: str) -> float | None:
+            tag = page.tags.get(tag_name)
+            if not tag or not tag.value:
+                return None
+            value = tag.value
+            # Resolution tags are RATIONAL (numerator, denominator) = px/unit.
+            if isinstance(value, tuple) and len(value) == 2 and value[0]:
+                num, den = value
+                return den / num
+            if value:
+                return 1.0 / float(value)
+            return None
+
+        z = ij.get("spacing")
+        z = float(z) if isinstance(z, (int, float)) and z else None
+        y = _spacing_from_tag("YResolution")
+        x = _spacing_from_tag("XResolution")
+
+    if z is None and y is None and x is None:
+        return None
+    return (z, y, x)
+
+
+def inspect_volume_voxel_size(
+    path: str | Path,
+) -> tuple[float, float, float] | None:
+    """Best-effort ``(z, y, x)`` voxel size for a supported volume file.
+
+    Reads the physical spacing recorded in the file's headers (TIFF resolution
+    tags / ImageJ metadata; NIfTI pixdim when nibabel is available). Returns
+    ``None`` when it cannot be determined, so callers can leave the field blank.
+    """
+    p = Path(path)
+    if not p.exists():
+        return None
+    name = p.name.lower()
+    try:
+        if name.endswith((".tif", ".tiff")):
+            return _tiff_voxel_size(p)
+        if name.endswith((".nii", ".nii.gz")):
+            import nibabel as nib
+
+            zooms = nib.load(str(p)).header.get_zooms()
+            if len(zooms) >= 3:
+                x, y, z = float(zooms[0]), float(zooms[1]), float(zooms[2])
+                return (z, y, x)
     except Exception:
         return None
+    return None

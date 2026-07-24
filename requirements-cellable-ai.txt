@@ -1,0 +1,12 @@
+# Optional dependencies for the Cellable-ported interactive AI-mask tools
+# (Point Mask / Box Mask / Boundary — see backend/annotation/cellable_port/).
+# NOT part of requirements.txt on purpose, same reasoning as
+# requirements-sam2.txt: the rest of the app (and the test suite) must never
+# require these to import. Unlike requirements-sam2.txt, everything here is
+# CPU-only and lightweight (no torch, no GPU) — safe to install in any dev
+# environment that wants these three tools working; skip it and the tools
+# degrade to a clear "unavailable" message (annotation/cellable_port/ai/
+# registry.py) instead of a crash.
+onnxruntime>=1.17
+scikit-image>=0.22
+scipy>=1.11

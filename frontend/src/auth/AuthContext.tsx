@@ -14,7 +14,7 @@ import {
   type LoginPortal,
   type RegisterInput,
 } from "../api/auth";
-import { getToken } from "../api/client";
+import { getToken, setToken } from "../api/client";
 import type { CurrentUser } from "../types";
 
 interface AuthState {
@@ -45,7 +45,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     fetchMe()
       .then(setUser)
-      .catch(() => setUser(null))
+      .catch(() => {
+        // Token is stale/invalid (e.g. backend DB was reset) — drop it so
+        // we don't keep retrying it and logging a 401 on every reload.
+        setToken(null);
+        setUser(null);
+      })
       .finally(() => setLoading(false));
   }, []);
 

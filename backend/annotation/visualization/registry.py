@@ -9,10 +9,11 @@ from .interfaces import VisualizationProvider
 
 VISUALIZATION_PROVIDERS: dict[str, str] = {
     "placeholder": "annotation.visualization.adapters.placeholder.PlaceholderVisualizationProvider",
+    "inapp": "annotation.visualization.adapters.inapp.InAppVisualizationProvider",
     "neuroglancer": "annotation.visualization.adapters.neuroglancer.NeuroglancerVisualizationProvider",
 }
 
-DEFAULT_VISUALIZATION_PROVIDER = "placeholder"
+DEFAULT_VISUALIZATION_PROVIDER = "inapp"
 
 
 def get_visualization_provider(name: str | None = None) -> VisualizationProvider:

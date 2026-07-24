@@ -11,6 +11,8 @@ export interface ReviewRecord {
   reviewed_at: string;
 }
 
+export type SubmissionSource = "upload" | "inapp";
+
 export interface Submission {
   id: number;
   task: number;
@@ -18,6 +20,7 @@ export interface Submission {
   annotator: number | null;
   annotator_username: string;
   label_file: string;
+  source: SubmissionSource;
   notes: string;
   qc_status: QCStatus;
   qc_report: Record<string, unknown>;

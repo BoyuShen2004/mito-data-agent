@@ -2,7 +2,28 @@ from rest_framework import serializers
 
 from core.lifecycle import classify_project
 
-from .models import Project
+from .models import Dataset, Project
+
+
+class DatasetSerializer(serializers.ModelSerializer):
+    volume_count = serializers.IntegerField(source="volumes.count", read_only=True)
+    project_title = serializers.CharField(source="project.title", read_only=True)
+
+    class Meta:
+        model = Dataset
+        fields = [
+            "id",
+            "project",
+            "project_title",
+            "name",
+            "description",
+            "image_directory",
+            "mask_directory",
+            "metadata",
+            "volume_count",
+            "created_at",
+        ]
+        read_only_fields = ["created_at"]
 
 
 class ProjectSerializer(serializers.ModelSerializer):
@@ -17,6 +38,8 @@ class ProjectSerializer(serializers.ModelSerializer):
     )
     volume_count = serializers.IntegerField(source="volumes.count", read_only=True)
     task_count = serializers.IntegerField(source="tasks.count", read_only=True)
+    datasets = DatasetSerializer(many=True, read_only=True)
+    dataset_count = serializers.IntegerField(source="datasets.count", read_only=True)
     # The New / To Proofread / Done bucket, computed from the review gate and
     # task rollup (see core.lifecycle).
     lifecycle = serializers.SerializerMethodField()
@@ -30,6 +53,8 @@ class ProjectSerializer(serializers.ModelSerializer):
             "id",
             "title",
             "dataset",
+            "datasets",
+            "dataset_count",
             "institution",
             "institution_name",
             "description",

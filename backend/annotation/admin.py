@@ -10,7 +10,6 @@ from django.shortcuts import render
 from django.utils import timezone
 from django.utils.html import format_html
 
-from accounts.models import AnnotatorProfile
 from core.admin_common import (
     ManagerAdminAccessMixin,
     NumericIdSearchMixin,
@@ -378,6 +377,7 @@ class AnnotationSubmissionAdmin(
         "project",
         "volume",
         "annotator",
+        "source",
         "qc_status",
         "submitted_at",
         "latest_decision",
@@ -385,6 +385,7 @@ class AnnotationSubmissionAdmin(
     )
     list_display_links = ("id",)
     list_filter = (
+        "source",
         "qc_status",
         ReviewStateFilter,
         ("task__project", admin.RelatedOnlyFieldListFilter),
@@ -413,6 +414,7 @@ class AnnotationSubmissionAdmin(
     readonly_fields = (
         "task",
         "annotator",
+        "source",
         "qc_status",
         "qc_report_display",
         "label_file_link",

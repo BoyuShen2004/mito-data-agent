@@ -112,15 +112,32 @@ chosen by a `settings.MITO_*` value.
 | Provider | Package | Default | Setting |
 | --- | --- | --- | --- |
 | Quality control | `annotation/quality_control/` | `basic` (original file checks) | `MITO_QC_PROVIDER` |
-| Proofreading | `annotation/proofreading/` | `placeholder` (download + upload) | `MITO_PROOFREADING_PROVIDER` |
-| Visualization | `annotation/visualization/` | `placeholder` | `MITO_VISUALIZATION_PROVIDER` |
+| Proofreading | `annotation/proofreading/` | `inapp` (in-app editor) | `MITO_PROOFREADING_PROVIDER` |
+| Visualization | `annotation/visualization/` | `inapp` (slice viewer) | `MITO_VISUALIZATION_PROVIDER` |
+| SAM2 tracking | `annotation/tracking/` | `local` (CPU stand-in) | `MITO_TRACKING_PROVIDER` |
 | Publishing | `annotation/publishing/` | `placeholder` | `MITO_PUBLISHING_PROVIDER` |
 | Processing backend | `processing/adapters/` | `local` (mock) | `MITO_PROCESSING_BACKEND` |
 
 The proofreading provider distinguishes **view** from **edit**: a read-only
-viewer (Neuroglancer) reports `editable=False`, so the UI never implies edits
-are saved. `run_basic_qc` is unchanged in behaviour — it now delegates to the QC
-provider and persists the result.
+viewer reports `editable=False`, so the UI never implies edits are saved.
+`run_basic_qc` is unchanged in behaviour — it delegates to the QC provider.
+
+### Visualization, in-app annotation, and fork-aware tracking
+
+- **Slice IO** (`annotation/visualization/slice_io.py`) opens volumes as
+  memory-maps and streams one windowed PNG slice at a time through bounded LRU
+  caches (Cellable's `sliceCache`/`MAX_SLICE_PIXMAP_CACHE` pattern, on the
+  server). The `inapp` visualization provider points the SPA's `SliceViewer`
+  (LRU object-URL cache + neighbour prefetch) at these endpoints.
+- **Role gating** lives in `annotation/services.py` (`can_view_task`,
+  `can_edit_task`, `can_view_volume`): requesters view; managers and the assigned
+  annotator edit. The launch info is downgraded server-side, and mutation
+  endpoints reject non-editors — the UI never decides access alone.
+- **SAM2 tracking** (`annotation/tracking/`, ported from `MTS`) seeds each fork
+  branch as its own temporary track id, groups them, propagates (GPU `sam2` via a
+  processing job, or CPU `local`), then **auto-merges the group into one final
+  mitochondria instance** (`run_branch_tracking`). Branch/final ids + group
+  membership persist in `volume.metadata['tracking_groups']`.
 
 ## ProcessingJob and the dispatcher
 

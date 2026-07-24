@@ -4,3 +4,4 @@ django-cors-headers>=4.3
 python-dotenv
 numpy
 tifffile
+Pillow>=10

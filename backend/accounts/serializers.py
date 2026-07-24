@@ -4,34 +4,10 @@ from rest_framework import serializers
 
 from core.choices import UserRole
 
-from .models import AnnotatorProfile, Institution, UserProfile
+from .models import AnnotatorProfile, UserProfile
 from .roles import get_role
 
 User = get_user_model()
-
-
-class InstitutionSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Institution
-        fields = [
-            "id",
-            "name",
-            "institution_type",
-            "contact_email",
-            "notes",
-            "created_at",
-        ]
-
-
-class AnnotatorProfileSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = AnnotatorProfile
-        fields = [
-            "is_active_annotator",
-            "max_active_tasks",
-            "quality_score",
-            "notes",
-        ]
 
 
 class CurrentUserSerializer(serializers.Serializer):

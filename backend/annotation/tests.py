@@ -6,11 +6,13 @@ from django.test import TestCase, override_settings
 
 from accounts.models import AnnotatorProfile
 from annotation.services import (
+    apply_assignment_plan,
     assign_task_to_annotator,
     assign_tasks_rule_based,
     auto_assign_project,
     calculate_annotator_workload,
     ensure_volume_tasks,
+    preview_assign_project,
     review_submission,
     submit_annotation,
 )
@@ -19,6 +21,7 @@ from core.choices import (
     QCStatus,
     ReviewDecision,
     TaskStatus,
+    TaskType,
 )
 from projects.services import calculate_project_progress, create_project
 from volumes.services import create_tasks_from_volume, register_volume
@@ -228,3 +231,141 @@ class AutoAssignVolumeTests(TestCase):
         self.assertFalse(summary["reviewed"])
         self.assertEqual(summary["assigned"], 0)
         self.assertEqual(AnnotationTask.objects.filter(project=project).count(), 0)
+
+
+@override_settings(MITO_DATA_ROOT=_TMP_ROOT)
+class AssignmentPlanTests(TestCase):
+    """The editable preview -> apply plan the manager curates."""
+
+    def _volume(self, project, name):
+        vol = register_volume(
+            project=project, name=name, image_path=f"{name}.tiff",
+            label_type=LabelType.NONE, autodetect_shape=False,
+        )
+        vol.shape_x, vol.shape_y, vol.shape_z = 16, 16, 32
+        vol.save()
+        return vol
+
+    def test_preview_creates_tasks_but_does_not_assign(self):
+        project = create_project(title="P", reviewed=True)
+        self._volume(project, "v1")
+        self._volume(project, "v2")
+        ann = make_annotator("ann", max_active=10)
+
+        summary = preview_assign_project(project)
+
+        self.assertTrue(summary["reviewed"])
+        self.assertEqual(summary["created_tasks"], 2)
+        # A plan was proposed for both tasks...
+        self.assertEqual(len(summary["proposed"]), 2)
+        self.assertTrue(all(v == ann.id for v in summary["proposed"].values()))
+        # ...but nothing is actually assigned until the plan is applied.
+        self.assertEqual(
+            AnnotationTask.objects.filter(project=project).exclude(
+                status=TaskStatus.UNASSIGNED
+            ).count(),
+            0,
+        )
+
+    def test_preview_blocked_until_reviewed(self):
+        project = create_project(title="Pending")
+        self._volume(project, "v1")
+        summary = preview_assign_project(project)
+        self.assertFalse(summary["reviewed"])
+        self.assertEqual(AnnotationTask.objects.filter(project=project).count(), 0)
+
+    def test_apply_plan_assigns_and_edits_fields(self):
+        project = create_project(title="P", reviewed=True)
+        self._volume(project, "v1")
+        ensure_volume_tasks(project)
+        task = AnnotationTask.objects.get(project=project)
+        ann = make_annotator("ann", max_active=10)
+
+        result = apply_assignment_plan(
+            project,
+            [
+                {
+                    "task_id": task.id,
+                    "annotator_id": ann.id,
+                    "priority": 7,
+                    "difficulty": 3,
+                    "instructions": "handle with care",
+                    "deadline": None,
+                }
+            ],
+            annotators_by_id={ann.id: ann},
+        )
+
+        self.assertEqual(result["updated"], 1)
+        self.assertEqual(result["assigned"], 1)
+        self.assertEqual(result["remaining_unassigned"], 0)
+        task.refresh_from_db()
+        self.assertEqual(task.assigned_to_id, ann.id)
+        self.assertEqual(task.status, TaskStatus.ASSIGNED)
+        self.assertEqual(task.priority, 7)
+        self.assertEqual(task.difficulty, 3)
+        self.assertEqual(task.instructions, "handle with care")
+
+    def test_apply_plan_can_unassign(self):
+        project = create_project(title="P", reviewed=True)
+        self._volume(project, "v1")
+        ensure_volume_tasks(project)
+        task = AnnotationTask.objects.get(project=project)
+        ann = make_annotator("ann", max_active=10)
+        assign_task_to_annotator(task, annotator=ann)
+
+        apply_assignment_plan(
+            project,
+            [{"task_id": task.id, "annotator_id": None}],
+            annotators_by_id={},
+        )
+
+        task.refresh_from_db()
+        self.assertIsNone(task.assigned_to_id)
+        self.assertEqual(task.status, TaskStatus.UNASSIGNED)
+
+    def test_apply_plan_rejects_foreign_task(self):
+        project = create_project(title="P", reviewed=True)
+        other = create_project(title="Other", reviewed=True)
+        self._volume(other, "v1")
+        ensure_volume_tasks(other)
+        foreign_task = AnnotationTask.objects.get(project=other)
+
+        with self.assertRaises(ValueError):
+            apply_assignment_plan(
+                project,
+                [{"task_id": foreign_task.id, "annotator_id": None}],
+                annotators_by_id={},
+            )
+
+
+@override_settings(MITO_DATA_ROOT=_TMP_ROOT)
+class TaskMetadataTests(TestCase):
+    """Every role reads the same (dataset) metadata off a task."""
+
+    def test_task_exposes_dataset_metadata_and_voxel(self):
+        from projects.services import get_or_create_dataset
+
+        from annotation.serializers import AnnotationTaskSerializer
+
+        project = create_project(title="P", reviewed=True)
+        meta = {"organism": "mouse", "tissue": "kidney"}
+        dataset = get_or_create_dataset(project=project, name="DS", metadata=meta)
+        vol = register_volume(
+            project=project, dataset=dataset, name="v1",
+            image_path="v1.tiff", autodetect_shape=False,
+        )
+        vol.shape_x, vol.shape_y, vol.shape_z = 32, 16, 8
+        vol.voxel_size_x, vol.voxel_size_y, vol.voxel_size_z = 0.5, 0.25, 0.2
+        vol.save()
+        task = AnnotationTask.objects.create(
+            project=project, volume=vol, z_start=0, z_end=8, y_end=16, x_end=32,
+            task_type=TaskType.MANUAL_ANNOTATION,
+        )
+
+        data = AnnotationTaskSerializer(task).data
+        # The annotator-facing payload carries the dataset's metadata verbatim,
+        # so it matches what the manager sees on the dataset card.
+        self.assertEqual(data["dataset_metadata"], meta)
+        self.assertEqual(data["voxel_size_z"], 0.2)
+        self.assertEqual(data["shape_x"], 32)

@@ -20,8 +20,28 @@ I want to change QA / quality control:
 → backend/annotation/quality_control/         (adapters/basic.py is the default)
 
 I want to change visualization (e.g. Neuroglancer):
-→ backend/annotation/visualization/
-→ frontend/src/features/visualization/        (add when a client viewer lands)
+→ backend/annotation/visualization/           (interfaces, registry, adapters/, slice_io.py)
+→ frontend/src/features/viewer/SliceViewer.tsx (in-app slice viewer)
+
+I want to change slice streaming / caching (memory):
+→ backend/annotation/visualization/slice_io.py (memmap + bounded LRU + PNG)
+
+I want to change the Annotate editor (tools, AI propose loop, tracking, layout, hotkeys):
+→ frontend/src/features/viewer/AnnotationCanvas.tsx   (the editor; shared by task View + Annotate via `editable`)
+→ frontend/src/features/viewer/annotate/            (AnnotateToolChrome, TrackRail, paintTools)
+→ frontend/src/features/viewer/{LabelsPanel,Labels3DPanel}.tsx
+→ frontend/src/styles.css   (.canvas-main-row grid, .track-rail, .canvas-status-overlay, .labels-row-size)
+→ backend/annotation/cellable_port/ai/{efficient_sam,embed_cache,normalize}.py   (EfficientSAM predict)
+→ /projects/weilab/shenb/cellable/labelme/          (the Cellable reference this is ported from)
+→ see frontend/features/MODULE.md for the full current-state walkthrough
+
+I want to change SAM2 tracking / forked-mito merge behaviour:
+→ backend/annotation/tracking/                 (branching.py, services.py, adapters/{local,sam2})
+→ frontend/src/pages/ViewerPage.tsx + frontend/src/api/viewer.ts
+→ also read cellable labelme/app.py tracking + labelme/ai/ when porting UX
+
+I want to change who can view vs annotate:
+→ backend/annotation/services.py               (can_view_task / can_edit_task / can_view_volume)
 
 I want to change SLURM / HPC submission:
 → backend/processing/adapters/slurm.py

@@ -2,7 +2,7 @@
 
 The React SPA (under ``/api/``) serves annotators and requesters. Managers run
 their full daily workflow through the Manager Admin at ``/admin/`` (see
-``core.admin_site.ManagerAdminSite`` and ``docs/admin.md``).
+``core.admin_site.ManagerAdminSite`` and ``progress/admin.md``).
 """
 
 from django.conf import settings
@@ -14,6 +14,9 @@ from rest_framework.routers import DefaultRouter
 from .views import index
 from accounts.api import AnnotatorListView, LoginView, LogoutView, MeView, RegisterView
 from annotation.api import (
+    AssignmentPlanApplyView,
+    AssignmentPlanPreviewView,
+    AssignmentPlanRowsView,
     AssignTaskView,
     AssignTasksView,
     MyCompletedTasksView,
@@ -22,17 +25,31 @@ from annotation.api import (
     ReviewSubmissionView,
     SubmissionDetailView,
     SubmissionListView,
+    SubmitInappTaskView,
     SubmitTaskView,
     TaskDetailView,
+    TaskLabelIdsView,
+    TaskLabelLifecycleView,
+    TaskLabelStateView,
+    TaskLabels3DView,
+    TaskLabelsSummaryView,
+    TaskPredictMaskView,
     TaskProofreadingView,
+    TaskTrackView,
     TaskVisualizationView,
+    TaskWarmEmbeddingView,
+    TaskWatershedView,
+    VolumeLabelSliceView,
+    VolumeMetaView,
+    VolumeSliceView,
 )
 from processing.api import ProcessingJobViewSet
-from projects.api import ProjectViewSet
+from projects.api import DatasetViewSet, ProjectViewSet
 from volumes.api import (
     HpcScanView,
     ProjectVolumesView,
     RegisterDataView,
+    VolumeDependentsView,
     VolumeDetailView,
     VolumeSplitView,
 )
@@ -40,6 +57,8 @@ from volumes.api import (
 # ProjectViewSet handles /api/projects/ CRUD plus a progress summary action.
 router = DefaultRouter()
 router.register("projects", ProjectViewSet, basename="project")
+# A project holds many datasets; a dataset holds many volume pairs.
+router.register("datasets", DatasetViewSet, basename="dataset")
 router.register("processing-jobs", ProcessingJobViewSet, basename="processing-job")
 
 urlpatterns = [
@@ -63,6 +82,11 @@ urlpatterns = [
     ),
     path("api/volumes/<int:pk>/", VolumeDetailView.as_view(), name="api-volume-detail"),
     path(
+        "api/volumes/<int:pk>/dependents/",
+        VolumeDependentsView.as_view(),
+        name="api-volume-dependents",
+    ),
+    path(
         "api/volumes/<int:pk>/split/",
         VolumeSplitView.as_view(),
         name="api-volume-split",
@@ -78,6 +102,21 @@ urlpatterns = [
         AssignTasksView.as_view(),
         name="api-assign-tasks",
     ),
+    path(
+        "api/projects/<int:project_id>/assign-plan/rows/",
+        AssignmentPlanRowsView.as_view(),
+        name="api-assign-plan-rows",
+    ),
+    path(
+        "api/projects/<int:project_id>/assign-plan/preview/",
+        AssignmentPlanPreviewView.as_view(),
+        name="api-assign-plan-preview",
+    ),
+    path(
+        "api/projects/<int:project_id>/assign-plan/apply/",
+        AssignmentPlanApplyView.as_view(),
+        name="api-assign-plan-apply",
+    ),
     path("api/tasks/<int:pk>/", TaskDetailView.as_view(), name="api-task-detail"),
     path(
         "api/tasks/<int:pk>/proofreading/",
@@ -89,6 +128,67 @@ urlpatterns = [
         TaskVisualizationView.as_view(),
         name="api-task-visualization",
     ),
+    # --- Slice streaming + in-app annotation -------------------------------
+    path(
+        "api/volumes/<int:pk>/meta/",
+        VolumeMetaView.as_view(),
+        name="api-volume-meta",
+    ),
+    path(
+        "api/volumes/<int:pk>/slice/",
+        VolumeSliceView.as_view(),
+        name="api-volume-slice",
+    ),
+    path(
+        "api/volumes/<int:pk>/label-slice/",
+        VolumeLabelSliceView.as_view(),
+        name="api-volume-label-slice",
+    ),
+    path(
+        "api/tasks/<int:pk>/track/",
+        TaskTrackView.as_view(),
+        name="api-task-track",
+    ),
+    path(
+        "api/tasks/<int:pk>/label-state/",
+        TaskLabelStateView.as_view(),
+        name="api-task-label-state",
+    ),
+    path(
+        "api/tasks/<int:pk>/label-ids/",
+        TaskLabelIdsView.as_view(),
+        name="api-task-label-ids",
+    ),
+    path(
+        "api/tasks/<int:pk>/predict-mask/",
+        TaskPredictMaskView.as_view(),
+        name="api-task-predict-mask",
+    ),
+    path(
+        "api/tasks/<int:pk>/warm-embedding/",
+        TaskWarmEmbeddingView.as_view(),
+        name="api-task-warm-embedding",
+    ),
+    path(
+        "api/tasks/<int:pk>/watershed/",
+        TaskWatershedView.as_view(),
+        name="api-task-watershed",
+    ),
+    path(
+        "api/tasks/<int:pk>/labels-summary/",
+        TaskLabelsSummaryView.as_view(),
+        name="api-task-labels-summary",
+    ),
+    path(
+        "api/tasks/<int:pk>/labels-3d/",
+        TaskLabels3DView.as_view(),
+        name="api-task-labels-3d",
+    ),
+    path(
+        "api/tasks/<int:pk>/labels/<int:label_id>/lifecycle/",
+        TaskLabelLifecycleView.as_view(),
+        name="api-task-label-lifecycle",
+    ),
     path(
         "api/tasks/<int:pk>/assign/",
         AssignTaskView.as_view(),
@@ -98,6 +198,11 @@ urlpatterns = [
         "api/tasks/<int:pk>/submit/",
         SubmitTaskView.as_view(),
         name="api-task-submit",
+    ),
+    path(
+        "api/tasks/<int:pk>/submit-inapp/",
+        SubmitInappTaskView.as_view(),
+        name="api-task-submit-inapp",
     ),
     path("api/my-tasks/", MyTasksView.as_view(), name="api-my-tasks"),
     path(
@@ -123,3 +228,10 @@ urlpatterns = [
 
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    # Dev-only data reset, driven by the button on the login page. Not routed
+    # at all in production.
+    from core.dev_api import DevResetView
+
+    urlpatterns += [
+        path("api/dev/reset/", DevResetView.as_view(), name="api-dev-reset"),
+    ]

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { getSubmission, reviewSubmission } from "../api/submissions";
 import { useAsync } from "../hooks/useAsync";
 import StatusBadge from "../components/StatusBadge";
@@ -63,9 +63,27 @@ export default function ReviewSubmissionPage() {
               <td>{s.annotator_username}</td>
             </tr>
             <tr>
-              <th>Label file</th>
-              <td>{s.label_file || "—"}</td>
+              <th>Source</th>
+              <td>
+                {s.source === "inapp" ? (
+                  <>
+                    In-app editor — no uploaded file; inspect the actual
+                    painted labels before deciding:{" "}
+                    <Link to={`/editor/tasks/${s.task}`}>
+                      <button className="secondary">Open annotation editor</button>
+                    </Link>
+                  </>
+                ) : (
+                  "Uploaded file"
+                )}
+              </td>
             </tr>
+            {s.source !== "inapp" && (
+              <tr>
+                <th>Label file</th>
+                <td>{s.label_file || "—"}</td>
+              </tr>
+            )}
             <tr>
               <th>Notes</th>
               <td>{s.notes || "—"}</td>

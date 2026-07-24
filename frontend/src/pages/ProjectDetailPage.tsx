@@ -1,66 +1,34 @@
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { getProjectSummary, reviewProject, updateProject } from "../api/projects";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { getProjectSummary, reviewProject } from "../api/projects";
+import { deleteProjectForce, projectDependents } from "../api/datasets";
 import { listProjectVolumes } from "../api/volumes";
-import { assignTasks } from "../api/tasks";
 import { useAuth } from "../auth/AuthContext";
 import { useAsync, type AsyncState } from "../hooks/useAsync";
 import ProjectSummaryCard from "../components/ProjectSummaryCard";
-import MetadataCard from "../components/MetadataCard";
-import TaskAssignmentTable from "../components/TaskAssignmentTable";
+import DatasetsCard from "../components/DatasetsCard";
+import DeleteButton from "../components/DeleteButton";
+import ProjectEditForm from "../components/ProjectEditForm";
+import AssignmentPlanEditor from "../components/AssignmentPlanEditor";
 import StatusBadge from "../components/StatusBadge";
-import type { DatasetMetadata } from "../types/project";
 import type { Volume } from "../types/volume";
 
-const METADATA_FIELDS: { key: keyof DatasetMetadata; label: string }[] = [
-  { key: "organism", label: "Organism / species" },
-  { key: "tissue", label: "Tissue or organ" },
-  { key: "cell_type", label: "Cell type" },
-  { key: "imaging_modality", label: "Imaging modality" },
-  { key: "imaging_instrument", label: "Imaging instrument / microscope" },
-  { key: "experimental_condition", label: "Experimental condition" },
-  { key: "sample_condition", label: "Sample condition" },
-  { key: "dataset_source", label: "Dataset source" },
-  { key: "publication", label: "Publication / reference" },
-  { key: "description", label: "Description" },
-  { key: "notes", label: "Notes" },
-];
 
 export default function ProjectDetailPage() {
   const { id } = useParams();
   const projectId = Number(id);
   const { isManager } = useAuth();
+  const navigate = useNavigate();
   const summary = useAsync(() => getProjectSummary(projectId), [projectId]);
   const volumes = useAsync(() => listProjectVolumes(projectId), [projectId]);
 
-  const [assigning, setAssigning] = useState(false);
   const [reviewing, setReviewing] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const runAssign = async () => {
-    setAssigning(true);
-    setNotice(null);
-    try {
-      const res = await assignTasks(projectId);
-      const created =
-        res.created_tasks && res.created_tasks > 0
-          ? `Created ${res.created_tasks} volume task(s). `
-          : "";
-      const skipped =
-        res.skipped_volumes && res.skipped_volumes > 0
-          ? ` ${res.skipped_volumes} volume(s) skipped (no detectable shape).`
-          : "";
-      setNotice(
-        `${created}Assigned ${res.assigned} volume(s) to annotators. ` +
-          `${res.remaining_unassigned} still unassigned.${skipped}`,
-      );
-      summary.reload();
-      volumes.reload();
-    } catch (e) {
-      setNotice(e instanceof Error ? e.message : "Assignment failed");
-    } finally {
-      setAssigning(false);
-    }
+  const reloadAll = () => {
+    summary.reload();
+    volumes.reload();
   };
 
   const doReview = async (reviewed: boolean) => {
@@ -86,13 +54,39 @@ export default function ProjectDetailPage() {
   return (
     <>
       <div className="row spread">
-        <h1>{project.dataset || project.title}</h1>
-        <StatusBadge value={project.status} />
+        <h1>{project.title}</h1>
+        <div className="row">
+          <StatusBadge value={project.status} />
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => setEditing((v) => !v)}
+          >
+            {editing ? "Close" : "Edit project"}
+          </button>
+          <DeleteButton
+            label={`project "${project.title}"`}
+            dependents={() => projectDependents(projectId)}
+            onDelete={(force) => deleteProjectForce(projectId, force)}
+            onDone={() => navigate("/projects")}
+          />
+        </div>
       </div>
       <p className="muted">
+        {project.dataset_count} dataset{project.dataset_count === 1 ? "" : "s"} ·{" "}
         {project.annotation_type.replace(/_/g, " ")} ·{" "}
         {project.annotation_target} · deadline {project.deadline ?? "—"}
       </p>
+
+      {editing && (
+        <ProjectEditForm
+          project={project}
+          onSaved={() => {
+            setEditing(false);
+            summary.reload();
+          }}
+        />
+      )}
 
       <ReviewBanner
         reviewed={reviewed}
@@ -104,47 +98,55 @@ export default function ProjectDetailPage() {
 
       <ProjectSummaryCard progress={progress} />
 
-      <MetadataEditor project={project} onSaved={summary.reload} />
-
       <div className="card">
         <div className="row spread">
-          <h3>Volumes / chunks</h3>
-          <Link to="/register-data">
+          <h3>Datasets &amp; volume pairs</h3>
+          <Link to={`/register-data?project=${projectId}`}>
             <button className="secondary">+ Register more data</button>
           </Link>
         </div>
-        <VolumeList volumes={volumes} isManager={isManager} />
+        <p className="muted">
+          A project holds one or more datasets; each dataset holds its image +
+          mask volume pairs.
+        </p>
       </div>
+
+      <DatasetsCard
+        datasets={project.datasets ?? []}
+        volumes={volumes.data ?? []}
+        onChanged={reloadAll}
+      />
+
+      {/* Volumes registered before datasets existed have no dataset link. */}
+      {(volumes.data ?? []).some((v) => !v.dataset) && (
+        <div className="card">
+          <h3>Ungrouped volumes</h3>
+          <p className="muted">
+            These were registered before datasets existed. Open one to assign it
+            to a dataset.
+          </p>
+          <VolumeList volumes={volumes} isManager={isManager} />
+        </div>
+      )}
 
       {isManager && (
         <>
           <div className="card">
-            <div className="row spread">
-              <h3>Task assignment</h3>
-              <button onClick={runAssign} disabled={assigning || !reviewed}>
-                {assigning ? "Assigning…" : "Auto-assign volumes to annotators"}
-              </button>
-            </div>
-            {!reviewed && (
+            <h3>Task assignment plan</h3>
+            {notice && <p className="muted">{notice}</p>}
+            {!reviewed ? (
               <p className="muted">
                 Approve this dataset above to enable assignment.
               </p>
-            )}
-            {notice && <p className="muted">{notice}</p>}
-            {reviewed && (
-              <>
-                <p className="muted">
-                  Auto-assign gives each annotator whole volumes, balanced
-                  evenly. Or manually assign / reassign below.
-                </p>
-                <TaskAssignmentTable
-                  projectId={projectId}
-                  onChange={() => {
-                    summary.reload();
-                    volumes.reload();
-                  }}
-                />
-              </>
+            ) : (
+              <AssignmentPlanEditor
+                projectId={projectId}
+                projectDeadline={project.deadline}
+                onSaved={() => {
+                  summary.reload();
+                  volumes.reload();
+                }}
+              />
             )}
           </div>
 
@@ -243,88 +245,6 @@ function ReviewBanner({
   );
 }
 
-function MetadataEditor({
-  project,
-  onSaved,
-}: {
-  project: { id: number; metadata: DatasetMetadata };
-  onSaved: () => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [values, setValues] = useState<DatasetMetadata>(project.metadata ?? {});
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  const save = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    setErr(null);
-    const clean: DatasetMetadata = {};
-    for (const [k, v] of Object.entries(values)) {
-      if (typeof v === "string" && v.trim()) clean[k] = v.trim();
-      else if (v && typeof v !== "string") clean[k] = v;
-    }
-    try {
-      await updateProject(project.id, { metadata: clean });
-      setEditing(false);
-      onSaved();
-    } catch (e2) {
-      setErr(e2 instanceof Error ? e2.message : "Save failed");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  if (!editing) {
-    return (
-      <>
-        <MetadataCard metadata={project.metadata} title="Dataset metadata" />
-        <div className="row" style={{ marginTop: "-0.5rem" }}>
-          <button className="secondary" onClick={() => setEditing(true)}>
-            Edit metadata
-          </button>
-        </div>
-      </>
-    );
-  }
-
-  return (
-    <div className="card">
-      <h3>Edit dataset metadata</h3>
-      {err && <div className="error">{err}</div>}
-      <form onSubmit={save}>
-        <div className="grid">
-          {METADATA_FIELDS.map((f) => (
-            <label className="field" key={f.key}>
-              <span>{f.label}</span>
-              <input
-                value={(values[f.key] as string) ?? ""}
-                onChange={(e) =>
-                  setValues((v) => ({ ...v, [f.key]: e.target.value }))
-                }
-              />
-            </label>
-          ))}
-        </div>
-        <div className="row">
-          <button type="submit" disabled={busy}>
-            {busy ? "Saving…" : "Save"}
-          </button>
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => {
-              setValues(project.metadata ?? {});
-              setEditing(false);
-            }}
-          >
-            Cancel
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-}
 
 function VolumeList({
   volumes,

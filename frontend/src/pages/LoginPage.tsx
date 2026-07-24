@@ -3,6 +3,8 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { homePathForRole } from "../routes/AppRoutes";
 import type { LoginPortal } from "../api/auth";
+import { setToken } from "../api/client";
+import { resetDevData } from "../api/dev";
 
 // Standard accounts created by `python manage.py seed_dev`. Shown on the login
 // page in development only (Vite `import.meta.env.DEV`) as a convenience — this
@@ -24,12 +26,37 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [resetDone, setResetDone] = useState<string | null>(null);
 
   const fillDevAccount = (account: (typeof DEV_ACCOUNTS)[number]) => {
     setPortal(account.portal);
     setUsername(account.username);
     setPassword(DEV_PASSWORD);
     setError(null);
+  };
+
+  const onResetDevData = async () => {
+    const ok = window.confirm(
+      "Delete ALL projects, volumes, tasks, submissions and non-superuser " +
+        "accounts, then recreate the standard dev accounts?\n\n" +
+        "This cannot be undone.",
+    );
+    if (!ok) return;
+    setResetting(true);
+    setError(null);
+    setResetDone(null);
+    try {
+      const res = await resetDevData();
+      // Any session from before the wipe is meaningless now.
+      setToken(null);
+      const total = Object.values(res.deleted).reduce((a, b) => a + b, 0);
+      setResetDone(`Cleared ${total} records. Dev accounts recreated.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Reset failed");
+    } finally {
+      setResetting(false);
+    }
   };
 
   if (user) {
@@ -168,6 +195,21 @@ export default function LoginPage() {
               <div className="dev-accounts-note">
                 All use the Annotator tab. Run{" "}
                 <code>python manage.py seed_dev</code> if they don't exist yet.
+              </div>
+
+              <div className="dev-reset">
+                <button
+                  type="button"
+                  className="dev-reset-btn"
+                  onClick={onResetDevData}
+                  disabled={resetting}
+                >
+                  {resetting ? "Clearing…" : "Clear all data & reset"}
+                </button>
+                <div className="dev-accounts-note">
+                  {resetDone ??
+                    "Deletes every project, volume, task and non-superuser account, then recreates the accounts above."}
+                </div>
               </div>
             </div>
           )}

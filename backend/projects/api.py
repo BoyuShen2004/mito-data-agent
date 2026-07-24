@@ -1,5 +1,6 @@
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from accounts.roles import is_manager
@@ -11,9 +12,26 @@ from core.lifecycle import (
 )
 from core.permissions import CanRegisterData
 
-from .models import Project
-from .serializers import ProjectSerializer
-from .services import calculate_project_progress, create_project, mark_project_reviewed
+from .models import Dataset, Project
+from .serializers import DatasetSerializer, ProjectSerializer
+from .services import (
+    DeleteBlocked,
+    calculate_project_progress,
+    create_project,
+    delete_dataset,
+    delete_project,
+    describe_dataset_dependents,
+    describe_project_dependents,
+    ensure_dataset_folder,
+    mark_project_reviewed,
+    update_dataset,
+)
+
+
+def _forced(request) -> bool:
+    """Whether the caller explicitly confirmed a destructive delete."""
+    value = request.query_params.get("force") or request.data.get("force")
+    return str(value).lower() in ("1", "true", "yes")
 
 
 class ProjectViewSet(viewsets.ModelViewSet):
@@ -82,6 +100,23 @@ class ProjectViewSet(viewsets.ModelViewSet):
             payload["workload"] = calculate_annotator_workload(project=project)
         return Response(payload)
 
+    @action(detail=True, methods=["get"])
+    def dependents(self, request, pk=None):
+        """What a delete would take with it, so the UI can warn accurately."""
+        return Response(describe_project_dependents(self.get_object()))
+
+    def destroy(self, request, *args, **kwargs):
+        """Delete a project, refusing to discard annotation work by accident."""
+        project = self.get_object()
+        try:
+            counts = delete_project(project, force=_forced(request))
+        except DeleteBlocked as exc:
+            return Response(
+                {"detail": str(exc), "counts": exc.counts},
+                status=status.HTTP_409_CONFLICT,
+            )
+        return Response({"deleted": counts}, status=status.HTTP_200_OK)
+
     @action(detail=True, methods=["post"])
     def review(self, request, pk=None):
         """Manager marks a project reviewed (or not), enabling assignment."""
@@ -94,3 +129,56 @@ class ProjectViewSet(viewsets.ModelViewSet):
         reviewed = request.data.get("reviewed", True)
         mark_project_reviewed(project, reviewer=request.user, reviewed=bool(reviewed))
         return Response(ProjectSerializer(project).data)
+
+
+class DatasetViewSet(viewsets.ModelViewSet):
+    """CRUD for the datasets inside a project.
+
+    Visibility follows the project: managers see every dataset, requesters only
+    those in projects they created. ``?project=<id>`` narrows the list.
+    """
+
+    serializer_class = DatasetSerializer
+    permission_classes = [CanRegisterData]
+
+    def get_queryset(self):
+        qs = Dataset.objects.select_related("project").all()
+        if not is_manager(self.request.user):
+            qs = qs.filter(project__created_by=self.request.user)
+        project_id = self.request.query_params.get("project")
+        if project_id:
+            qs = qs.filter(project_id=project_id)
+        return qs
+
+    def _check_project_access(self, project) -> None:
+        if not is_manager(self.request.user) and project.created_by_id != self.request.user.id:
+            raise PermissionDenied("You do not own this project.")
+
+    def perform_create(self, serializer):
+        self._check_project_access(serializer.validated_data["project"])
+        serializer.save()
+        ensure_dataset_folder(serializer.instance.project, serializer.instance)
+
+    def perform_update(self, serializer):
+        # Guard both the current project and any project it is moved to.
+        self._check_project_access(serializer.instance.project)
+        target = serializer.validated_data.get("project")
+        if target is not None:
+            self._check_project_access(target)
+        update_dataset(serializer.instance, **serializer.validated_data)
+
+    @action(detail=True, methods=["get"])
+    def dependents(self, request, pk=None):
+        return Response(describe_dataset_dependents(self.get_object()))
+
+    def destroy(self, request, *args, **kwargs):
+        dataset = self.get_object()
+        self._check_project_access(dataset.project)
+        try:
+            counts = delete_dataset(dataset, force=_forced(request))
+        except DeleteBlocked as exc:
+            return Response(
+                {"detail": str(exc), "counts": exc.counts},
+                status=status.HTTP_409_CONFLICT,
+            )
+        return Response({"deleted": counts}, status=status.HTTP_200_OK)

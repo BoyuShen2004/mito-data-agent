@@ -20,9 +20,14 @@ export default function RequesterDashboard() {
     <>
       <div className="row spread">
         <h1>My Projects</h1>
-        <Link to="/register-data">
-          <button>+ Register data</button>
-        </Link>
+        <div className="row">
+          <Link to="/projects/new">
+            <button>+ New project</button>
+          </Link>
+          <Link to="/register-data">
+            <button className="secondary">Register data</button>
+          </Link>
+        </div>
       </div>
 
       <LifecycleTabs

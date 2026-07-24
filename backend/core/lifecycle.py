@@ -16,7 +16,7 @@ The three buckets:
 * **Done** — accepted/completed work (approved, completed, delivered, published).
 
 Classification is defined at the most granular level (the task) and rolled up to
-volumes and projects. See ``docs/architecture.md`` for the rationale.
+volumes and projects. See ``progress/architecture.md`` for the rationale.
 """
 
 from __future__ import annotations

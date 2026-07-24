@@ -22,7 +22,11 @@ export default function AnnotatorDashboard() {
       </div>
 
       <div className="card">
-        <h3>Assigned to me</h3>
+        <h3>To annotate</h3>
+        <p className="muted">
+          Click <b>Annotate</b> on a task to open the editor, or <b>View</b> to
+          look at the data read-only.
+        </p>
         {myTasks.loading ? (
           <p className="muted">Loading…</p>
         ) : (
@@ -35,7 +39,7 @@ export default function AnnotatorDashboard() {
       </div>
 
       <div className="card">
-        <h3>Submitted / completed</h3>
+        <h3>Submitted &amp; completed</h3>
         {completed.loading ? (
           <p className="muted">Loading…</p>
         ) : (

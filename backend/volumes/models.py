@@ -20,8 +20,20 @@ class Volume(models.Model):
     their kind is recorded in ``label_type``, which drives task creation.
     """
 
+    # The owning project. Denormalised from ``dataset.project`` because tasks,
+    # assignment, and progress all query volumes by project; keep the two in
+    # step via ``volumes.services.register_volume``/``set_volume_dataset``.
     project = models.ForeignKey(
         "projects.Project", on_delete=models.CASCADE, related_name="volumes"
+    )
+    # The dataset this volume pair belongs to. Nullable only for rows created
+    # before datasets existed.
+    dataset = models.ForeignKey(
+        "projects.Dataset",
+        on_delete=models.CASCADE,
+        related_name="volumes",
+        null=True,
+        blank=True,
     )
     name = models.CharField(max_length=255)
 

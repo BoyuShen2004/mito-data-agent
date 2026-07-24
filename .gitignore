@@ -7,6 +7,13 @@ staticfiles/
 mito_data_root/
 /data/
 
+# Vendored SAM 2 checkout + checkpoints (vendor/sam2/ — see vendor/README.md
+# for provenance/how to (re)populate it). Same reasoning as /data/ above:
+# large binary weights (~1.5GB) and a full third-party source tree don't
+# belong in this repo's own git history. Keep vendor/README.md tracked.
+vendor/*
+!vendor/README.md
+
 # Python
 __pycache__/
 *.py[cod]
@@ -39,6 +46,9 @@ htmlcov/
 .env.*
 !.env.example
 *.pem
+
+# Per-machine agent/tool overrides (the shared .claude/ config stays tracked)
+.claude/settings.local.json
 
 # IDE
 .idea/

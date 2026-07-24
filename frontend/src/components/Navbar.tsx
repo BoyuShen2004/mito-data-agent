@@ -1,10 +1,25 @@
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { roleLabel } from "../labels";
+import { backFallbackFor } from "../routes/backNavigation";
+import { homePathForRole } from "../routes/roles";
+import BackButton from "./BackButton";
 
+/**
+ * Global top bar for every authenticated page (including View/Annotate).
+ *
+ * Navigation ownership (keep this the single place — don't re-add Done/Home
+ * duplicates on page topbars):
+ * - Brand is display-only (not a link)
+ * - Role home (My Tasks / Dashboard / …) → dedicated control, not the brand
+ * - ← Back → previous page when possible, else hierarchical parent
+ */
 export default function Navbar() {
   const { user, isManager, isRequester, logout } = useAuth();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const homePath = homePathForRole(user?.role);
+  const fallback = backFallbackFor(pathname, user?.role);
 
   const onLogout = async () => {
     await logout();
@@ -16,7 +31,7 @@ export default function Navbar() {
       <span className="brand">🧬 Mito Data Agent</span>
       {isManager ? (
         <>
-          <NavLink to="/manager" className="nav-link">
+          <NavLink to="/manager" className="nav-link" end>
             Dashboard
           </NavLink>
           <NavLink to="/projects" className="nav-link">
@@ -28,7 +43,7 @@ export default function Navbar() {
         </>
       ) : isRequester ? (
         <>
-          <NavLink to="/requester" className="nav-link">
+          <NavLink to="/requester" className="nav-link" end>
             My Projects
           </NavLink>
           <NavLink to="/register-data" className="nav-link">
@@ -36,15 +51,21 @@ export default function Navbar() {
           </NavLink>
         </>
       ) : (
-        <NavLink to="/annotator" className="nav-link">
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => navigate(homePath)}
+          title="Go to My Tasks"
+        >
           My Tasks
-        </NavLink>
+        </button>
       )}
       <span className="spacer" />
+      {fallback && <BackButton fallback={fallback} />}
       <span className="muted">
         {user?.username} ({roleLabel(user?.role)})
       </span>
-      <button className="secondary" onClick={onLogout}>
+      <button type="button" className="secondary" onClick={onLogout}>
         Log out
       </button>
     </nav>

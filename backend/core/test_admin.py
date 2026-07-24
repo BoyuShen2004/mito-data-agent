@@ -9,7 +9,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from accounts.models import AnnotatorProfile, UserProfile
-from annotation.models import AnnotationSubmission, AnnotationTask, ReviewRecord
+from annotation.models import AnnotationTask, ReviewRecord
 from annotation.services import assign_task_to_annotator, submit_annotation
 from core.choices import TaskStatus, UserRole
 from projects.services import create_project

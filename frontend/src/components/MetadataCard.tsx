@@ -14,7 +14,35 @@ const LABELS: Record<string, string> = {
   publication: "Publication / reference",
   description: "Description",
   notes: "Notes",
+  split: "Split",
+  label_classes: "Label classes",
+  channel_names: "Channels",
+  licence: "Licence",
 };
+
+/** Render a metadata value as text.
+ *
+ * Most values are strings, but nnU-Net's dataset.json contributes maps such as
+ * `label_classes` ({background: 0, mitochondria: 1}), which must not end up as
+ * "[object Object]".
+ */
+function formatValue(value: unknown): string {
+  if (Array.isArray(value)) return value.map(formatValue).join(", ");
+  if (value && typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([k, v]) => `${k} (${formatValue(v)})`)
+      .join(", ");
+  }
+  return String(value);
+}
+
+/** Whether a value has anything worth showing. */
+function isEmpty(value: unknown): boolean {
+  if (value === null || value === undefined) return true;
+  if (Array.isArray(value)) return value.length === 0;
+  if (typeof value === "object") return Object.keys(value as object).length === 0;
+  return String(value).trim() === "";
+}
 
 export default function MetadataCard({
   metadata,
@@ -23,9 +51,7 @@ export default function MetadataCard({
   metadata?: DatasetMetadata | null;
   title?: string;
 }) {
-  const entries = Object.entries(metadata ?? {}).filter(
-    ([, v]) => v !== null && v !== undefined && String(v).trim() !== "",
-  );
+  const entries = Object.entries(metadata ?? {}).filter(([, v]) => !isEmpty(v));
 
   const ordered = [
     ...Object.keys(LABELS).filter((k) => k in (metadata ?? {})),
@@ -45,12 +71,11 @@ export default function MetadataCard({
               if (seen.has(key)) return null;
               seen.add(key);
               const value = (metadata ?? {})[key];
-              if (value === null || value === undefined || String(value).trim() === "")
-                return null;
+              if (isEmpty(value)) return null;
               return (
                 <tr key={key}>
                   <th>{LABELS[key] ?? key.replace(/_/g, " ")}</th>
-                  <td>{String(value)}</td>
+                  <td>{formatValue(value)}</td>
                 </tr>
               );
             })}

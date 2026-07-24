@@ -10,12 +10,15 @@ class VolumeSerializer(serializers.ModelSerializer):
     image_location = serializers.CharField(read_only=True)
     label_location = serializers.CharField(read_only=True)
     task_count = serializers.IntegerField(source="tasks.count", read_only=True)
+    dataset_name = serializers.CharField(source="dataset.name", read_only=True, default="")
 
     class Meta:
         model = Volume
         fields = [
             "id",
             "project",
+            "dataset",
+            "dataset_name",
             "name",
             "source_volume",
             "chunk_id",
@@ -50,7 +53,19 @@ class VolumeSplitSerializer(serializers.Serializer):
 
 
 class HpcScanSerializer(serializers.Serializer):
-    hpc_directory = serializers.CharField()
+    """Scan an image directory plus an optional, separate mask directory."""
+
+    image_directory = serializers.CharField(required=False, allow_blank=True, default="")
+    mask_directory = serializers.CharField(required=False, allow_blank=True, default="")
+    # Older clients sent a single directory; treat it as the image directory.
+    hpc_directory = serializers.CharField(required=False, allow_blank=True, default="")
+
+    def validate(self, attrs):
+        if not (attrs.get("image_directory") or attrs.get("hpc_directory") or "").strip():
+            raise serializers.ValidationError(
+                {"image_directory": "An image directory is required."}
+            )
+        return attrs
 
 
 class RegisterDataFileSerializer(serializers.Serializer):
@@ -87,8 +102,14 @@ class RegisterDataSerializer(serializers.Serializer):
 
     dataset = serializers.CharField()
     volume = serializers.CharField()
-    hpc_directory = serializers.CharField()
-    project = serializers.IntegerField(required=False, allow_null=True)
+    # Masks commonly live in their own directory (nnU-Net imagesTr/labelsTr);
+    # mask_directory is optional and defaults to the image directory.
+    image_directory = serializers.CharField(required=False, allow_blank=True, default="")
+    mask_directory = serializers.CharField(required=False, allow_blank=True, default="")
+    hpc_directory = serializers.CharField(required=False, allow_blank=True, default="")
+    # Data is registered *into* a project, which is created first: a project
+    # describes the work, and holds the datasets registered against it.
+    project = serializers.IntegerField()
     annotation_type = serializers.CharField(required=False, allow_blank=True)
     # Image+mask pairs (preferred) and/or image-only files. When both are
     # omitted the directory is auto-scanned and all detected pairs registered.
@@ -108,3 +129,10 @@ class RegisterDataSerializer(serializers.Serializer):
         if not value.strip():
             raise serializers.ValidationError("A volume name is required.")
         return value
+
+    def validate(self, attrs):
+        if not (attrs.get("image_directory") or attrs.get("hpc_directory") or "").strip():
+            raise serializers.ValidationError(
+                {"image_directory": "An image directory is required."}
+            )
+        return attrs

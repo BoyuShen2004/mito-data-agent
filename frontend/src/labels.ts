@@ -7,7 +7,7 @@
 //
 // Keep in sync with the backend mirror in `backend/core/labels.py`.
 
-import type { Role } from "./types";
+import type { AnnotationType, ProjectStatus, Role } from "./types";
 
 export type Lifecycle = "new" | "to_proofread" | "done";
 export type WorkflowType = "annotation" | "proofreading" | "segmentation";
@@ -29,25 +29,7 @@ export const LIFECYCLE_LABELS: Record<Lifecycle, string> = {
 // Ordered for navigation / tabs.
 export const LIFECYCLE_ORDER: Lifecycle[] = ["new", "to_proofread", "done"];
 
-export const WORKFLOW_TYPE_LABELS: Record<WorkflowType, string> = {
-  annotation: "Annotation",
-  proofreading: "Proofreading",
-  segmentation: "Segmentation",
-};
-
-// Domain nouns whose display label may diverge from the internal name.
-export const TERM_LABELS: Record<string, string> = {
-  requester: "Institution",
-  project: "Project",
-  dataset: "Dataset",
-  volume: "Volume",
-  chunk: "Chunk",
-  task: "Task",
-  submission: "Submission",
-  review: "Review",
-};
-
-function titleize(value: string): string {
+export function titleize(value: string): string {
   return value
     .replace(/_/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
@@ -62,10 +44,60 @@ export function lifecycleLabel(value: Lifecycle | string): string {
   return LIFECYCLE_LABELS[value as Lifecycle] ?? titleize(value);
 }
 
-export function workflowTypeLabel(value: WorkflowType | string): string {
-  return WORKFLOW_TYPE_LABELS[value as WorkflowType] ?? titleize(value);
+// --- Project option lists -------------------------------------------------
+//
+// The exact values Django accepts (core.choices.AnnotationType /
+// ProjectStatus). Forms must offer these and nothing else: a value outside
+// them is rejected by the API with a 400.
+
+export const ANNOTATION_TYPES: { value: AnnotationType; label: string }[] = [
+  { value: "instance_segmentation", label: "Instance segmentation" },
+  { value: "semantic_segmentation", label: "Semantic segmentation" },
+  { value: "proofreading", label: "Proofreading" },
+];
+
+export const PROJECT_STATUSES: ProjectStatus[] = [
+  "draft",
+  "active",
+  "in_annotation",
+  "in_review",
+  "completed",
+  "delivered",
+  "cancelled",
+];
+
+// --- Task priority & difficulty -------------------------------------------
+//
+// Stored as integers 1–5 (see core.choices.PriorityLevel / DifficultyLevel) but
+// shown as words, since a bare number gives no hint which end is which.
+
+export interface Level {
+  value: number;
+  label: string;
 }
 
-export function termLabel(term: string): string {
-  return TERM_LABELS[term] ?? titleize(term);
+export const PRIORITY_LEVELS: Level[] = [
+  { value: 1, label: "Lowest" },
+  { value: 2, label: "Low" },
+  { value: 3, label: "Normal" },
+  { value: 4, label: "High" },
+  { value: 5, label: "Urgent" },
+];
+
+export const DIFFICULTY_LEVELS: Level[] = [
+  { value: 1, label: "Very easy" },
+  { value: 2, label: "Easy" },
+  { value: 3, label: "Moderate" },
+  { value: 4, label: "Hard" },
+  { value: 5, label: "Very hard" },
+];
+
+function levelLabel(levels: Level[], value: number | null | undefined): string {
+  const match = levels.find((l) => l.value === value);
+  return match ? match.label : value != null ? `Level ${value}` : "—";
 }
+
+export const priorityLabel = (v: number | null | undefined) =>
+  levelLabel(PRIORITY_LEVELS, v);
+export const difficultyLabel = (v: number | null | undefined) =>
+  levelLabel(DIFFICULTY_LEVELS, v);
